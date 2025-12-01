@@ -1,0 +1,4 @@
+set HTTP_PROXY=http://paulo.ferreira:SENHA@172.31.136.14:128
+set HTTPS_PROXY=http://paulo.ferreira:SENHA@172.31.136.14:128
+
+conda activate whisper-gpu
