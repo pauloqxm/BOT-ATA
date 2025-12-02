@@ -5,7 +5,7 @@ import tempfile
 import json
 from pathlib import Path
 from datetime import datetime
-import re  # <<< IMPORTANTE para o regex das correções
+import re
 
 os.environ["HF_HUB_DISABLE_SYMLINKS_WARNING"] = "1"
 os.environ["KMP_DUPLICATE_LIB_OK"] = "True"
@@ -22,10 +22,8 @@ except RuntimeError:
 os.environ["OMP_NUM_THREADS"] = str(num_threads)
 
 import librosa
-import soundfile as sf
 import streamlit as st
 import pandas as pd
-import numpy as np
 
 # Whisper oficial
 import whisper
@@ -78,6 +76,19 @@ st.markdown("""
     .stButton > button:disabled {
         background: #cccccc;
         box-shadow: none;
+    }
+    
+    /* Botões secundários */
+    .secondary-btn {
+        background: linear-gradient(135deg, #6c757d 0%, #495057 100%) !important;
+    }
+    
+    .success-btn {
+        background: linear-gradient(135deg, #28a745 0%, #20c997 100%) !important;
+    }
+    
+    .warning-btn {
+        background: linear-gradient(135deg, #ffc107 0%, #fd7e14 100%) !important;
     }
     
     /* Uploader estilizado */
@@ -212,6 +223,35 @@ st.markdown("""
         overflow-y: auto;
     }
     
+    /* Editor de texto */
+    .text-editor {
+        background: white;
+        padding: 1.5rem;
+        border-radius: 10px;
+        border: 2px solid #e9ecef;
+        font-family: 'Arial', sans-serif;
+        line-height: 1.8;
+        min-height: 400px;
+        max-height: 600px;
+        overflow-y: auto;
+        white-space: pre-wrap;
+        word-wrap: break-word;
+    }
+    
+    .text-editor:focus {
+        border-color: #667eea;
+        box-shadow: 0 0 0 3px rgba(102, 126, 234, 0.2);
+    }
+    
+    /* Parágrafos */
+    .paragraph {
+        margin-bottom: 1.5rem;
+        padding: 1rem;
+        border-left: 4px solid #28a745;
+        background: linear-gradient(135deg, #f8fff9 0%, #f0fdf4 100%);
+        border-radius: 8px;
+    }
+    
     /* Status indicators */
     .status-processing {
         background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
@@ -292,6 +332,18 @@ st.markdown("""
     .download-btn:hover {
         background: linear-gradient(135deg, #12b886 0%, #0ca678 100%) !important;
     }
+    
+    /* Toggle buttons */
+    .stCheckbox > div {
+        padding: 0.5rem;
+        border-radius: 10px;
+        background: #f8f9fa;
+    }
+    
+    /* Slider estilizado */
+    .stSlider > div > div > div > div {
+        background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+    }
 </style>
 """, unsafe_allow_html=True)
 
@@ -335,10 +387,16 @@ def salvar_correcoes_custom(data: dict):
         st.error(f"Erro ao salvar correções. {e}")
 
 # =============================
-# Estado da biblioteca de correções
+# Estado da aplicação
 # =============================
 if "correcoes_custom" not in st.session_state:
     st.session_state["correcoes_custom"] = carregar_correcoes_custom()
+
+if "texto_transcrito" not in st.session_state:
+    st.session_state["texto_transcrito"] = ""
+
+if "texto_editado" not in st.session_state:
+    st.session_state["texto_editado"] = ""
 
 # =============================
 # Utilitários gerais
@@ -405,6 +463,90 @@ def pos_processar_texto(texto: str) -> str:
     texto = re.sub(r"\s+([.,!?])", r"\1", texto)
 
     return texto.strip()
+
+def organizar_paragrafos(texto: str, max_caracteres=500) -> str:
+    """Divide o texto em parágrafos com base na pontuação e limite de caracteres."""
+    if not texto:
+        return ""
+    
+    # Divide por pontos finais que não são abreviações
+    frases = re.split(r'(?<!\w\.\w.)(?<![A-Z][a-z]\.)(?<=\.|\?|\!)\s+', texto)
+    
+    paragrafos = []
+    paragrafo_atual = ""
+    
+    for frase in frases:
+        if not frase.strip():
+            continue
+            
+        # Se adicionar esta frase exceder o limite, fecha o parágrafo atual
+        if len(paragrafo_atual) + len(frase) > max_caracteres and paragrafo_atual:
+            paragrafos.append(paragrafo_atual.strip())
+            paragrafo_atual = ""
+        
+        paragrafo_atual += frase + " "
+    
+    # Adiciona o último parágrafo
+    if paragrafo_atual:
+        paragrafos.append(paragrafo_atual.strip())
+    
+    # Junta parágrafos com quebra dupla de linha
+    return "\n\n".join(paragrafos)
+
+def capitalizar_frases(texto: str) -> str:
+    """Capitaliza a primeira letra de cada frase."""
+    if not texto:
+        return ""
+    
+    # Divide o texto em frases
+    frases = re.split(r'(?<=[.!?])\s+', texto)
+    
+    # Capitaliza cada frase
+    frases_capitalizadas = []
+    for frase in frases:
+        if frase:
+            frase = frase.strip()
+            if frase:
+                # Capitaliza primeira letra
+                frase = frase[0].upper() + frase[1:]
+                frases_capitalizadas.append(frase)
+    
+    return ' '.join(frases_capitalizadas)
+
+def corrigir_pontuacao(texto: str) -> str:
+    """Corrige problemas comuns de pontuação."""
+    if not texto:
+        return ""
+    
+    # Remove espaços antes de pontuação
+    texto = re.sub(r'\s+([.,!?:;])', r'\1', texto)
+    
+    # Adiciona espaço após pontuação (exceto se for ponto final de abreviação)
+    texto = re.sub(r'([.,!?:;])(?!\s|$)', r'\1 ', texto)
+    
+    # Corrige múltiplas pontuações
+    texto = re.sub(r'([.,!?:;]){2,}', r'\1', texto)
+    
+    # Remove espaços duplicados
+    texto = re.sub(r'\s+', ' ', texto)
+    
+    return texto.strip()
+
+def formatar_ata(texto: str) -> str:
+    """Formata texto para estrutura de ata formal."""
+    if not texto:
+        return ""
+    
+    # Adiciona cabeçalho se não existir
+    if not texto.startswith("ATA DA REUNIÃO"):
+        data_atual = datetime.now().strftime("%d/%m/%Y")
+        texto = f"ATA DA REUNIÃO\nData: {data_atual}\n\n{texto}"
+    
+    # Adiciona rodapé se não existir
+    if not "Encerramento" in texto and not "FIM DA ATA" in texto:
+        texto += "\n\n---\nFIM DA ATA\n"
+    
+    return texto
 
 def dividir_em_chunks(audio, sr, chunk_seg=120):
     partes = []
@@ -659,9 +801,9 @@ with st.sidebar:
         st.metric("PyTorch", torch.__version__[:6])
 
 # =============================
-# Abas principais estilizadas
+# Abas principais estilizadas - AGORA COM 3 ABAS
 # =============================
-tab1, tab2 = st.tabs(["🎧 TRANSCREVER ÁUDIO", "📚 BIBLIOTECA DE CORREÇÕES"])
+tab1, tab2, tab3 = st.tabs(["🎧 TRANSCREVER ÁUDIO", "📚 BIBLIOTECA DE CORREÇÕES", "✏️ EDITOR DE TEXTO"])
 
 # =============================
 # Aba 1 – Transcrição
@@ -679,7 +821,8 @@ with tab1:
     audio_file = st.file_uploader(
         "Arraste e solte ou clique para selecionar",
         type=["mp3", "wav", "m4a", "ogg", "flac", "aac", "wma"],
-        label_visibility="collapsed"
+        label_visibility="collapsed",
+        key="audio_uploader_tab1"
     )
 
     if audio_file is not None:
@@ -706,7 +849,8 @@ with tab1:
             "🚀 INICIAR TRANSCRIÇÃO",
             disabled=(audio_file is None),
             use_container_width=True,
-            type="primary"
+            type="primary",
+            key="transcribe_button_tab1"
         )
 
     if transcribe_clicked:
@@ -775,8 +919,12 @@ with tab1:
                     audio, sr, modelo_whisper, chunk_segundos
                 )
 
-                # <<< AQUI as correções entram de verdade
+                # Aplica correções básicas
                 texto = pos_processar_texto(texto)
+                
+                # Salva no estado da sessão
+                st.session_state["texto_transcrito"] = texto
+                st.session_state["texto_editado"] = texto  # Inicializa com o texto original
 
                 if not texto.strip():
                     st.error("❌ Nenhum texto final gerado. Verifique se o áudio tem fala clara.")
@@ -787,6 +935,9 @@ with tab1:
                         <div style="text-align: center;">
                             <h2 style="margin: 0; color: #155724;">🎉 Transcrição Concluída!</h2>
                             <p style="margin: 0; color: #0c5460;">Processamento finalizado com sucesso</p>
+                            <p style="margin: 1rem 0 0 0; font-size: 1.1rem;">
+                                Acesse a aba <strong>✏️ EDITOR DE TEXTO</strong> para organizar e formatar o texto
+                            </p>
                         </div>
                     </div>
                     """, unsafe_allow_html=True)
@@ -837,10 +988,11 @@ with tab1:
 
                     # Preview do texto
                     st.markdown("### 🧾 Prévia da Transcrição")
+                    preview_texto = texto[:500] + "..." if len(texto) > 500 else texto
                     st.markdown(f"""
                     <div class="text-preview">
-                        {texto[:400]}...
-                        {f"<br><br><small><i>Total de {len(texto)} caracteres</i></small>" if len(texto) > 400 else ""}
+                        {preview_texto}
+                        <br><br><small><i>Total: {len(texto)} caracteres, {len(texto.split())} palavras</i></small>
                     </div>
                     """, unsafe_allow_html=True)
 
@@ -869,12 +1021,12 @@ with tab1:
                     dl_col1, dl_col2 = st.columns(2)
                     with dl_col1:
                         st.download_button(
-                            "📄 Baixar Transcrição Completa",
+                            "📄 Baixar Transcrição Bruta",
                             data=texto,
-                            file_name=f"transcricao_{nome_base}_{timestamp}.txt",
+                            file_name=f"transcricao_bruta_{nome_base}_{timestamp}.txt",
                             mime="text/plain",
                             use_container_width=True,
-                            key="download_transcription"
+                            key="download_raw_transcription"
                         )
                     with dl_col2:
                         if ts:
@@ -884,7 +1036,7 @@ with tab1:
                                 file_name=f"timestamps_{nome_base}_{timestamp}.txt",
                                 mime="text/plain",
                                 use_container_width=True,
-                                key="download_timestamps"
+                                key="download_timestamps_tab1"
                             )
 
             finally:
@@ -979,7 +1131,7 @@ with tab2:
             original = st.text_input(
                 "Palavra/Expressão original:",
                 placeholder="Ex: vc, tb, d+, etc.",
-                key="original_input"
+                key="original_input_tab2"
             )
         with col_arrow:
             st.markdown("<div style='text-align: center; font-size: 2rem; margin-top: 1.5rem;'>→</div>", unsafe_allow_html=True)
@@ -987,7 +1139,7 @@ with tab2:
             substituir = st.text_input(
                 "Substituir por:",
                 placeholder="Ex: você, também, muito, etc.",
-                key="substituir_input"
+                key="substituir_input_tab2"
             )
         
         submit_col1, submit_col2 = st.columns(2)
@@ -1010,7 +1162,6 @@ with tab2:
             if not original.strip() or not substituir.strip():
                 st.error("❌ Preencha ambos os campos antes de adicionar.")
             else:
-                # Agora salvando SEM espaços extras
                 chave = original.strip()
                 valor = substituir.strip()
                 st.session_state["correcoes_custom"][chave] = valor
@@ -1024,6 +1175,302 @@ with tab2:
             st.success("✅ Todas as correções personalizadas foram removidas")
             st.rerun()
 
+# =============================
+# NOVA ABA 3 – Editor de Texto e Pós-Processamento
+# =============================
+with tab3:
+    st.markdown("""
+    <div style="text-align: center; margin-bottom: 2rem;">
+        <h2>✏️ Editor de Texto</h2>
+        <p style="color: #666;">Organize, formate e refine sua transcrição</p>
+    </div>
+    """, unsafe_allow_html=True)
+    
+    # Verifica se há texto disponível
+    texto_disponivel = st.session_state.get("texto_transcrito", "")
+    
+    if not texto_disponivel:
+        st.markdown("""
+        <div class="warning-card" style="text-align: center; padding: 3rem;">
+            <div style="font-size: 4rem; margin-bottom: 1rem;">📝</div>
+            <h3>Nenhuma transcrição disponível</h3>
+            <p>Para usar o editor, primeiro transcreva um áudio na aba <strong>🎧 TRANSCREVER ÁUDIO</strong></p>
+            <p style="color: #666; font-size: 0.9rem;">O texto transcrito aparecerá automaticamente aqui</p>
+        </div>
+        """, unsafe_allow_html=True)
+    else:
+        # Estatísticas do texto
+        st.markdown("### 📊 Estatísticas do Texto")
+        
+        col_stats1, col_stats2, col_stats3, col_stats4 = st.columns(4)
+        with col_stats1:
+            caracteres = len(st.session_state["texto_transcrito"])
+            st.metric("Caracteres", f"{caracteres:,}")
+        with col_stats2:
+            palavras = len(st.session_state["texto_transcrito"].split())
+            st.metric("Palavras", f"{palavras:,}")
+        with col_stats3:
+            linhas = len(st.session_state["texto_transcrito"].split('\n'))
+            st.metric("Linhas", linhas)
+        with col_stats4:
+            paragrafos = len([p for p in st.session_state["texto_transcrito"].split('\n\n') if p.strip()])
+            st.metric("Parágrafos", paragrafos)
+        
+        # Controles de formatação
+        st.markdown("### ⚙️ Ferramentas de Formatação")
+        
+        col_tools1, col_tools2, col_tools3, col_tools4 = st.columns(4)
+        
+        with col_tools1:
+            organizar_paragrafos_btn = st.button(
+                "📝 Organizar Parágrafos",
+                use_container_width=True,
+                type="primary"
+            )
+        
+        with col_tools2:
+            capitalizar_btn = st.button(
+                "🔠 Capitalizar Frases",
+                use_container_width=True,
+                type="secondary"
+            )
+        
+        with col_tools3:
+            corrigir_pontuacao_btn = st.button(
+                "📌 Corrigir Pontuação",
+                use_container_width=True,
+                type="secondary"
+            )
+        
+        with col_tools4:
+            formatar_ata_btn = st.button(
+                "📋 Formatar como ATA",
+                use_container_width=True,
+                type="secondary"
+            )
+        
+        # Aplica as transformações quando os botões são clicados
+        texto_editado = st.session_state.get("texto_editado", texto_disponivel)
+        
+        if organizar_paragrafos_btn:
+            texto_editado = organizar_paragrafos(texto_editado)
+            st.session_state["texto_editado"] = texto_editado
+            st.success("✅ Texto organizado em parágrafos!")
+            st.rerun()
+        
+        if capitalizar_btn:
+            texto_editado = capitalizar_frases(texto_editado)
+            st.session_state["texto_editado"] = texto_editado
+            st.success("✅ Frases capitalizadas!")
+            st.rerun()
+        
+        if corrigir_pontuacao_btn:
+            texto_editado = corrigir_pontuacao(texto_editado)
+            st.session_state["texto_editado"] = texto_editado
+            st.success("✅ Pontuação corrigida!")
+            st.rerun()
+        
+        if formatar_ata_btn:
+            texto_editado = formatar_ata(texto_editado)
+            st.session_state["texto_editado"] = texto_editado
+            st.success("✅ Texto formatado como ATA!")
+            st.rerun()
+        
+        # Configurações avançadas
+        with st.expander("⚙️ Configurações Avançadas"):
+            col_adv1, col_adv2 = st.columns(2)
+            
+            with col_adv1:
+                max_caracteres = st.slider(
+                    "Máximo de caracteres por parágrafo:",
+                    min_value=200,
+                    max_value=1000,
+                    value=500,
+                    step=50,
+                    help="Controla o tamanho máximo de cada parágrafo"
+                )
+            
+            with col_adv2:
+                aplicar_correcoes = st.checkbox(
+                    "Aplicar correções automáticas",
+                    value=True,
+                    help="Aplica as correções da biblioteca durante o processamento"
+                )
+        
+        # Editor de texto
+        st.markdown("### ✍️ Editor de Texto")
+        
+        # Visualização lado a lado
+        col_view1, col_view2 = st.columns(2)
+        
+        with col_view1:
+            st.markdown("#### 📋 Texto Original")
+            st.markdown(f"""
+            <div class="text-editor" style="background: #f8f9fa; border-color: #dee2e6;">
+                {st.session_state["texto_transcrito"][:2000]}
+                {f"<br><br><small><i>... texto truncado para visualização ({len(st.session_state['texto_transcrito'])} caracteres no total)</i></small>" 
+                if len(st.session_state["texto_transcrito"]) > 2000 else ""}
+            </div>
+            """, unsafe_allow_html=True)
+        
+        with col_view2:
+            st.markdown("#### 📝 Texto Editado")
+            
+            # Editor de texto interativo
+            texto_editado = st.text_area(
+                "Edite seu texto:",
+                value=st.session_state.get("texto_editado", texto_disponivel),
+                height=300,
+                label_visibility="collapsed",
+                key="text_editor_area"
+            )
+            
+            # Atualiza o estado
+            st.session_state["texto_editado"] = texto_editado
+        
+        # Estatísticas do texto editado
+        st.markdown("### 📈 Comparação")
+        
+        col_comp1, col_comp2, col_comp3, col_comp4 = st.columns(4)
+        
+        with col_comp1:
+            delta_caracteres = len(texto_editado) - len(st.session_state["texto_transcrito"])
+            st.metric(
+                "Caracteres",
+                f"{len(texto_editado):,}",
+                delta=f"{delta_caracteres:+d}"
+            )
+        
+        with col_comp2:
+            palavras_editadas = len(texto_editado.split())
+            delta_palavras = palavras_editadas - palavras
+            st.metric(
+                "Palavras",
+                f"{palavras_editadas:,}",
+                delta=f"{delta_palavras:+d}"
+            )
+        
+        with col_comp3:
+            paragrafos_editados = len([p for p in texto_editado.split('\n\n') if p.strip()])
+            delta_paragrafos = paragrafos_editados - paragrafos
+            st.metric(
+                "Parágrafos",
+                paragrafos_editados,
+                delta=f"{delta_paragrafos:+d}"
+            )
+        
+        with col_comp4:
+            # Calcula densidade (palavras por parágrafo)
+            densidade_original = palavras / max(paragrafos, 1)
+            densidade_editada = palavras_editadas / max(paragrafos_editados, 1)
+            delta_densidade = densidade_editada - densidade_original
+            st.metric(
+                "Densidade",
+                f"{densidade_editada:.1f}",
+                delta=f"{delta_densidade:+.1f}",
+                help="Palavras por parágrafo"
+            )
+        
+        # Botões de ação
+        st.markdown("### 💾 Ações")
+        
+        col_actions1, col_actions2, col_actions3 = st.columns(3)
+        
+        with col_actions1:
+            # Botão para restaurar original
+            if st.button("↩️ Restaurar Original", use_container_width=True):
+                st.session_state["texto_editado"] = st.session_state["texto_transcrito"]
+                st.success("✅ Texto restaurado para o original!")
+                st.rerun()
+        
+        with col_actions2:
+            # Botão para aplicar todas as transformações
+            if st.button("✨ Aplicar Todas", use_container_width=True, type="primary"):
+                texto_processado = st.session_state["texto_transcrito"]
+                
+                if aplicar_correcoes:
+                    texto_processado = pos_processar_texto(texto_processado)
+                
+                texto_processado = organizar_paragrafos(texto_processado, max_caracteres)
+                texto_processado = capitalizar_frases(texto_processado)
+                texto_processado = corrigir_pontuacao(texto_processado)
+                texto_processado = formatar_ata(texto_processado)
+                
+                st.session_state["texto_editado"] = texto_processado
+                st.success("✅ Todas as transformações aplicadas!")
+                st.rerun()
+        
+        with col_actions3:
+            # Botão para limpar
+            if st.button("🗑️ Limpar Editor", use_container_width=True, type="secondary"):
+                st.session_state["texto_editado"] = ""
+                st.success("✅ Editor limpo!")
+                st.rerun()
+        
+        # Download do texto editado
+        st.markdown("### 📥 Download")
+        
+        if texto_editado:
+            nome_base = "transcricao_editada"
+            timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+            
+            col_dl1, col_dl2 = st.columns(2)
+            
+            with col_dl1:
+                st.download_button(
+                    "💾 Baixar Texto Editado",
+                    data=texto_editado,
+                    file_name=f"{nome_base}_{timestamp}.txt",
+                    mime="text/plain",
+                    use_container_width=True,
+                    key="download_edited_text"
+                )
+            
+            with col_dl2:
+                # Versão formatada em HTML
+                texto_html = f"""
+                <!DOCTYPE html>
+                <html>
+                <head>
+                    <meta charset="UTF-8">
+                    <title>Transcrição Editada - {timestamp}</title>
+                    <style>
+                        body {{ font-family: Arial, sans-serif; line-height: 1.6; max-width: 800px; margin: 0 auto; padding: 20px; }}
+                        .paragraph {{ margin-bottom: 1.5rem; padding: 1rem; border-left: 4px solid #28a745; background: #f8fff9; }}
+                        h1 {{ color: #333; border-bottom: 2px solid #667eea; padding-bottom: 10px; }}
+                        .metadata {{ background: #f8f9fa; padding: 1rem; border-radius: 5px; margin: 1rem 0; }}
+                    </style>
+                </head>
+                <body>
+                    <h1>Transcrição Editada</h1>
+                    <div class="metadata">
+                        <p><strong>Data de geração:</strong> {datetime.now().strftime("%d/%m/%Y %H:%M")}</p>
+                        <p><strong>Caracteres:</strong> {len(texto_editado):,}</p>
+                        <p><strong>Palavras:</strong> {len(texto_editado.split()):,}</p>
+                    </div>
+                    <div>
+                """
+                
+                # Adiciona parágrafos formatados
+                for paragrafo in texto_editado.split('\n\n'):
+                    if paragrafo.strip():
+                        texto_html += f'<div class="paragraph">{paragrafo.strip()}</div>\n'
+                
+                texto_html += """
+                    </div>
+                </body>
+                </html>
+                """
+                
+                st.download_button(
+                    "🌐 Baixar como HTML",
+                    data=texto_html,
+                    file_name=f"{nome_base}_{timestamp}.html",
+                    mime="text/html",
+                    use_container_width=True,
+                    key="download_html_version"
+                )
+
 # Fechar container principal
 st.markdown('</div>', unsafe_allow_html=True)
 
@@ -1031,9 +1478,9 @@ st.markdown('</div>', unsafe_allow_html=True)
 st.markdown("---")
 st.markdown("""
 <div style="text-align: center; color: #666; padding: 1.5rem;">
-    <p style="font-size: 1.1rem; font-weight: 600;">🎯 Transcrição Inteligente</p>
+    <p style="font-size: 1.1rem; font-weight: 600;">🎯 Transcrição Inteligente - Editor Avançado</p>
     <p style="color: #999; font-size: 0.9rem;">
-        Whisper OpenAI • v2.0 • Processamento em tempo real • Correções automáticas • Interface moderna
+        Whisper OpenAI • v3.0 • Processamento em tempo real • Correções automáticas • Editor de texto avançado
     </p>
     <p style="color: #aaa; font-size: 0.8rem; margin-top: 1rem;">
         © 2024 • Para uso profissional • Desenvolvido com Streamlit
