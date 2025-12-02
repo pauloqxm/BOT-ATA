@@ -1186,7 +1186,6 @@ with tab3:
     </div>
     """, unsafe_allow_html=True)
     
-    # Verifica se há texto disponível
     texto_disponivel = st.session_state.get("texto_transcrito", "")
     
     if not texto_disponivel:
@@ -1199,84 +1198,34 @@ with tab3:
         </div>
         """, unsafe_allow_html=True)
     else:
-        # Estatísticas do texto
-        st.markdown("### 📊 Estatísticas do Texto")
+        # Inicializa estados do editor a partir da transcrição, se ainda estiverem vazios
+        if not st.session_state["texto_editado"]:
+            st.session_state["texto_editado"] = texto_disponivel
+        
+        if not st.session_state["text_editor_area"]:
+            st.session_state["text_editor_area"] = st.session_state["texto_editado"]
+        
+        texto_original = texto_disponivel
+        texto_editado = st.session_state["text_editor_area"]
+        
+        # Estatísticas do texto original
+        st.markdown("### 📊 Estatísticas do Texto Original")
         
         col_stats1, col_stats2, col_stats3, col_stats4 = st.columns(4)
         with col_stats1:
-            caracteres = len(st.session_state["texto_transcrito"])
-            st.metric("Caracteres", f"{caracteres:,}")
+            caracteres_orig = len(texto_original)
+            st.metric("Caracteres", f"{caracteres_orig:,}")
         with col_stats2:
-            palavras = len(st.session_state["texto_transcrito"].split())
-            st.metric("Palavras", f"{palavras:,}")
+            palavras_orig = len(texto_original.split())
+            st.metric("Palavras", f"{palavras_orig:,}")
         with col_stats3:
-            linhas = len(st.session_state["texto_transcrito"].split('\n'))
-            st.metric("Linhas", linhas)
+            linhas_orig = len(texto_original.split('\n'))
+            st.metric("Linhas", linhas_orig)
         with col_stats4:
-            paragrafos = len([p for p in st.session_state["texto_transcrito"].split('\n\n') if p.strip()])
-            st.metric("Parágrafos", paragrafos)
+            paragrafos_orig = len([p for p in texto_original.split('\n\n') if p.strip()])
+            st.metric("Parágrafos", paragrafos_orig)
         
-        # Controles de formatação
-        st.markdown("### ⚙️ Ferramentas de Formatação")
-        
-        col_tools1, col_tools2, col_tools3, col_tools4 = st.columns(4)
-        
-        with col_tools1:
-            organizar_paragrafos_btn = st.button(
-                "📝 Organizar Parágrafos",
-                use_container_width=True,
-                type="primary"
-            )
-        
-        with col_tools2:
-            capitalizar_btn = st.button(
-                "🔠 Capitalizar Frases",
-                use_container_width=True,
-                type="secondary"
-            )
-        
-        with col_tools3:
-            corrigir_pontuacao_btn = st.button(
-                "📌 Corrigir Pontuação",
-                use_container_width=True,
-                type="secondary"
-            )
-        
-        with col_tools4:
-            formatar_ata_btn = st.button(
-                "📋 Formatar como ATA",
-                use_container_width=True,
-                type="secondary"
-            )
-        
-        # Aplica as transformações quando os botões são clicados
-        texto_editado = st.session_state.get("texto_editado", texto_disponivel)
-        
-        if organizar_paragrafos_btn:
-            texto_editado = organizar_paragrafos(texto_editado)
-            st.session_state["texto_editado"] = texto_editado
-            st.success("✅ Texto organizado em parágrafos!")
-            st.rerun()
-        
-        if capitalizar_btn:
-            texto_editado = capitalizar_frases(texto_editado)
-            st.session_state["texto_editado"] = texto_editado
-            st.success("✅ Frases capitalizadas!")
-            st.rerun()
-        
-        if corrigir_pontuacao_btn:
-            texto_editado = corrigir_pontuacao(texto_editado)
-            st.session_state["texto_editado"] = texto_editado
-            st.success("✅ Pontuação corrigida!")
-            st.rerun()
-        
-        if formatar_ata_btn:
-            texto_editado = formatar_ata(texto_editado)
-            st.session_state["texto_editado"] = texto_editado
-            st.success("✅ Texto formatado como ATA!")
-            st.rerun()
-        
-        # Configurações avançadas
+        # Configurações avançadas primeiro (para já termos max_caracteres/aplicar_correcoes)
         with st.expander("⚙️ Configurações Avançadas"):
             col_adv1, col_adv2 = st.columns(2)
             
@@ -1292,81 +1241,148 @@ with tab3:
             
             with col_adv2:
                 aplicar_correcoes = st.checkbox(
-                    "Aplicar correções automáticas",
+                    "Aplicar correções automáticas (biblioteca)",
                     value=True,
                     help="Aplica as correções da biblioteca durante o processamento"
                 )
         
-        # Editor de texto
+        # Controles de formatação
+        st.markdown("### ⚙️ Ferramentas de Formatação")
+        
+        col_tools1, col_tools2, col_tools3, col_tools4 = st.columns(4)
+        
+        with col_tools1:
+            organizar_paragrafos_btn = st.button(
+                "📝 Organizar Parágrafos",
+                use_container_width=True,
+                type="primary",
+                key="btn_organizar_paragrafos"
+            )
+        
+        with col_tools2:
+            capitalizar_btn = st.button(
+                "🔠 Capitalizar Frases",
+                use_container_width=True,
+                type="secondary",
+                key="btn_capitalizar"
+            )
+        
+        with col_tools3:
+            corrigir_pontuacao_btn = st.button(
+                "📌 Corrigir Pontuação",
+                use_container_width=True,
+                type="secondary",
+                key="btn_corrigir_pontuacao"
+            )
+        
+        with col_tools4:
+            formatar_ata_btn = st.button(
+                "📋 Formatar como ATA",
+                use_container_width=True,
+                type="secondary",
+                key="btn_formatar_ata"
+            )
+        
+        # Sempre usar o texto ATUAL do editor como base
+        texto_base = st.session_state["text_editor_area"]
+        
+        # Aplica as transformações quando os botões são clicados
+        if organizar_paragrafos_btn:
+            novo = organizar_paragrafos(texto_base, max_caracteres=max_caracteres)
+            st.session_state["text_editor_area"] = novo
+            st.session_state["texto_editado"] = novo
+            st.success("✅ Texto organizado em parágrafos!")
+            st.rerun()
+        
+        if capitalizar_btn:
+            novo = capitalizar_frases(texto_base)
+            st.session_state["text_editor_area"] = novo
+            st.session_state["texto_editado"] = novo
+            st.success("✅ Frases capitalizadas!")
+            st.rerun()
+        
+        if corrigir_pontuacao_btn:
+            novo = corrigir_pontuacao(texto_base)
+            st.session_state["text_editor_area"] = novo
+            st.session_state["texto_editado"] = novo
+            st.success("✅ Pontuação corrigida!")
+            st.rerun()
+        
+        if formatar_ata_btn:
+            novo = formatar_ata(texto_base)
+            st.session_state["text_editor_area"] = novo
+            st.session_state["texto_editado"] = novo
+            st.success("✅ Texto formatado como ATA!")
+            st.rerun()
+        
+        # Editor de texto – direita edita, esquerda mostra original
         st.markdown("### ✍️ Editor de Texto")
         
-        # Visualização lado a lado
         col_view1, col_view2 = st.columns(2)
         
         with col_view1:
             st.markdown("#### 📋 Texto Original")
             st.markdown(f"""
             <div class="text-editor" style="background: #f8f9fa; border-color: #dee2e6;">
-                {st.session_state["texto_transcrito"][:2000]}
-                {f"<br><br><small><i>... texto truncado para visualização ({len(st.session_state['texto_transcrito'])} caracteres no total)</i></small>" 
-                if len(st.session_state["texto_transcrito"]) > 2000 else ""}
+                {texto_original[:2000]}
+                {f"<br><br><small><i>... texto truncado para visualização ({len(texto_original)} caracteres no total)</i></small>" 
+                if len(texto_original) > 2000 else ""}
             </div>
             """, unsafe_allow_html=True)
         
         with col_view2:
             st.markdown("#### 📝 Texto Editado")
-            
-            # Editor de texto interativo
-            texto_editado = st.text_area(
+            texto_editado_widget = st.text_area(
                 "Edite seu texto:",
-                value=st.session_state.get("texto_editado", texto_disponivel),
+                value=st.session_state["text_editor_area"],
                 height=300,
                 label_visibility="collapsed",
                 key="text_editor_area"
             )
-            
-            # Atualiza o estado
-            st.session_state["texto_editado"] = texto_editado
+            # Sincroniza com texto_editado
+            st.session_state["texto_editado"] = texto_editado_widget
         
         # Estatísticas do texto editado
+        texto_editado = st.session_state["texto_editado"]
+        
         st.markdown("### 📈 Comparação")
         
         col_comp1, col_comp2, col_comp3, col_comp4 = st.columns(4)
         
         with col_comp1:
-            delta_caracteres = len(texto_editado) - len(st.session_state["texto_transcrito"])
+            caracteres_edit = len(texto_editado)
+            delta_caracteres = caracteres_edit - len(texto_original)
             st.metric(
                 "Caracteres",
-                f"{len(texto_editado):,}",
+                f"{caracteres_edit:,}",
                 delta=f"{delta_caracteres:+d}"
             )
         
         with col_comp2:
-            palavras_editadas = len(texto_editado.split())
-            delta_palavras = palavras_editadas - palavras
+            palavras_edit = len(texto_editado.split())
+            delta_palavras = palavras_edit - palavras_orig
             st.metric(
                 "Palavras",
-                f"{palavras_editadas:,}",
+                f"{palavras_edit:,}",
                 delta=f"{delta_palavras:+d}"
             )
         
         with col_comp3:
-            paragrafos_editados = len([p for p in texto_editado.split('\n\n') if p.strip()])
-            delta_paragrafos = paragrafos_editados - paragrafos
+            paragrafos_edit = len([p for p in texto_editado.split('\n\n') if p.strip()])
+            delta_paragrafos = paragrafos_edit - paragrafos_orig
             st.metric(
                 "Parágrafos",
-                paragrafos_editados,
+                paragrafos_edit,
                 delta=f"{delta_paragrafos:+d}"
             )
         
         with col_comp4:
-            # Calcula densidade (palavras por parágrafo)
-            densidade_original = palavras / max(paragrafos, 1)
-            densidade_editada = palavras_editadas / max(paragrafos_editados, 1)
-            delta_densidade = densidade_editada - densidade_original
+            densidade_orig = palavras_orig / max(paragrafos_orig, 1)
+            densidade_edit = palavras_edit / max(paragrafos_edit, 1)
+            delta_densidade = densidade_edit - densidade_orig
             st.metric(
                 "Densidade",
-                f"{densidade_editada:.1f}",
+                f"{densidade_edit:.1f}",
                 delta=f"{delta_densidade:+.1f}",
                 help="Palavras por parágrafo"
             )
@@ -1377,33 +1393,33 @@ with tab3:
         col_actions1, col_actions2, col_actions3 = st.columns(3)
         
         with col_actions1:
-            # Botão para restaurar original
-            if st.button("↩️ Restaurar Original", use_container_width=True):
-                st.session_state["texto_editado"] = st.session_state["texto_transcrito"]
+            if st.button("↩️ Restaurar Original", use_container_width=True, key="btn_restaurar_original"):
+                st.session_state["texto_editado"] = texto_original
+                st.session_state["text_editor_area"] = texto_original
                 st.success("✅ Texto restaurado para o original!")
                 st.rerun()
         
         with col_actions2:
-            # Botão para aplicar todas as transformações
-            if st.button("✨ Aplicar Todas", use_container_width=True, type="primary"):
-                texto_processado = st.session_state["texto_transcrito"]
+            if st.button("✨ Aplicar Todas", use_container_width=True, type="primary", key="btn_aplicar_todas"):
+                texto_processado = texto_original
                 
                 if aplicar_correcoes:
                     texto_processado = pos_processar_texto(texto_processado)
                 
-                texto_processado = organizar_paragrafos(texto_processado, max_caracteres)
+                texto_processado = organizar_paragrafos(texto_processado, max_caracteres=max_caracteres)
                 texto_processado = capitalizar_frases(texto_processado)
                 texto_processado = corrigir_pontuacao(texto_processado)
                 texto_processado = formatar_ata(texto_processado)
                 
                 st.session_state["texto_editado"] = texto_processado
+                st.session_state["text_editor_area"] = texto_processado
                 st.success("✅ Todas as transformações aplicadas!")
                 st.rerun()
         
         with col_actions3:
-            # Botão para limpar
-            if st.button("🗑️ Limpar Editor", use_container_width=True, type="secondary"):
+            if st.button("🗑️ Limpar Editor", use_container_width=True, type="secondary", key="btn_limpar_editor"):
                 st.session_state["texto_editado"] = ""
+                st.session_state["text_editor_area"] = ""
                 st.success("✅ Editor limpo!")
                 st.rerun()
         
@@ -1427,7 +1443,6 @@ with tab3:
                 )
             
             with col_dl2:
-                # Versão formatada em HTML
                 texto_html = f"""
                 <!DOCTYPE html>
                 <html>
@@ -1450,8 +1465,6 @@ with tab3:
                     </div>
                     <div>
                 """
-                
-                # Adiciona parágrafos formatados
                 for paragrafo in texto_editado.split('\n\n'):
                     if paragrafo.strip():
                         texto_html += f'<div class="paragraph">{paragrafo.strip()}</div>\n'
@@ -1470,6 +1483,7 @@ with tab3:
                     use_container_width=True,
                     key="download_html_version"
                 )
+
 
 # Fechar container principal
 st.markdown('</div>', unsafe_allow_html=True)
