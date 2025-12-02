@@ -2,7 +2,6 @@ import os
 import time
 import warnings
 import tempfile
-from concurrent.futures import ThreadPoolExecutor, as_completed
 
 # =============================
 # Ajustes de ambiente
@@ -18,6 +17,7 @@ num_threads = os.cpu_count() or 4
 try:
     torch.set_num_threads(num_threads)
 except RuntimeError:
+    # se o PyTorch reclamar porque já tem thread rodando, ignora
     pass
 os.environ["OMP_NUM_THREADS"] = str(num_threads)
 
@@ -37,97 +37,17 @@ except ImportError:
     OPENVINO_OK = False
 
 # =============================
-# Config Streamlit + Tema
+# Config Streamlit
 # =============================
 st.set_page_config(
     page_title="Transcrição ATA – Whisper / OpenVINO",
     layout="wide",
 )
 
-st.markdown(
-    """
-<style>
-/* Fundo geral */
-.main, .block-container {
-    background: linear-gradient(145deg, #0f172a 0%, #020617 40%, #020617 100%);
-    color: #e5e7eb;
-}
-
-/* Títulos */
-h1, h2, h3, h4 {
-    color: #e5e7eb !important;
-}
-
-/* Sidebar */
-[data-testid="stSidebar"] {
-    background: #020617;
-    border-right: 1px solid #1f2937;
-}
-[data-testid="stSidebar"] h2, 
-[data-testid="stSidebar"] h3, 
-[data-testid="stSidebar"] label, 
-[data-testid="stSidebar"] p {
-    color: #e5e7eb !important;
-}
-
-/* Cards */
-.card {
-    border-radius: 12px;
-    padding: 1rem 1.3rem;
-    margin-bottom: 0.8rem;
-    background: rgba(15,23,42,0.85);
-    border: 1px solid rgba(148,163,184,0.25);
-}
-.card-soft {
-    background: rgba(15,23,42,0.65);
-}
-.card-success {
-    border-color: #22c55e80;
-}
-.card-warn {
-    border-color: #eab30880;
-}
-.card-error {
-    border-color: #ef444480;
-}
-
-/* Métricas */
-[data-testid="stMetric"] {
-    background: rgba(15,23,42,0.9);
-    border-radius: 12px;
-    padding: 0.8rem;
-    border: 1px solid rgba(148,163,184,0.35);
-}
-
-/* Botão principal */
-.stButton>button {
-    width: 100%;
-    border-radius: 999px;
-    background: linear-gradient(135deg, #22c55e, #16a34a) !important;
-    color: white !important;
-    border: none;
-    font-weight: 600;
-    padding: 0.6rem 1rem;
-}
-.stButton>button:hover {
-    filter: brightness(1.1);
-}
-
-/* Área de texto de timestamps */
-textarea {
-    background: rgba(15,23,42,0.9) !important;
-    color: #e5e7eb !important;
-}
-</style>
-""",
-    unsafe_allow_html=True,
-)
-
-st.title("📝 Transcrição de Ata")
-st.markdown(
-    "<div class='card card-soft'>Transcrição em português brasileiro com foco em atas de reuniões, "
-    "sessões de Câmara, audiências e falas formais.</div>",
-    unsafe_allow_html=True,
+st.title("📝 Transcrição de Ata – Whisper + OpenVINO (Intel)")
+st.caption(
+    "Tenta usar OpenVINO (NPU/GPU Intel) quando disponível. "
+    "Se der erro, volta automaticamente para Whisper espremendo a CPU."
 )
 
 # =============================
@@ -211,130 +131,73 @@ def carregar_modelo_whisper(nome_modelo: str, device: str):
     return whisper.load_model(nome_modelo, device=device)
 
 
-def _transcrever_chunk_whisper(model, parte, t_ini, t_fim, idx):
-    """Função auxiliar para rodar em threads (sem chamadas ao Streamlit aqui)."""
-    inicio_parte = time.time()
-    result = model.transcribe(
-        parte,
-        language="pt",
-        task="transcribe",
-        temperature=[0.0, 0.2],
-        best_of=5,
-        initial_prompt=BASE_PROMPT,
-        fp16=False,  # seguro para CPU; se tiver GPU, PyTorch já otimiza por dentro
-    )
-    tempo_parte = time.time() - inicio_parte
-    segs = result.get("segments", [])
-    return {
-        "idx": idx,
-        "t_ini": t_ini,
-        "t_fim": t_fim,
-        "segments": segs,
-        "tempo": tempo_parte,
-    }
-
-
 def transcrever_com_whisper(audio, sr, modelo_nome: str, chunk_seg: int):
-    # Detecta device
     if torch.cuda.is_available():
         device = "cuda"
+        fp16 = True
         device_msg = f"GPU NVIDIA detectada: {torch.cuda.get_device_name(0)}"
     else:
         device = "cpu"
+        fp16 = False
         device_msg = "GPU NVIDIA não detectada. Usando CPU (Intel/AMD)."
 
-    st.sidebar.markdown(
-        f"<div class='card card-soft'><b>Backend:</b> Whisper<br><b>Device:</b> {device_msg}</div>",
-        unsafe_allow_html=True,
-    )
+    st.info(device_msg)
 
     duracao_min = len(audio) / sr / 60
     modelo_efetivo = modelo_nome
     if device == "cpu" and duracao_min > 20 and modelo_nome in ("small", "medium", "large-v3"):
-        st.sidebar.warning(
+        st.warning(
             f"Áudio com {duracao_min:.1f} min e modelo '{modelo_nome}' em CPU "
             f"pode ficar muito lento. Usando 'base'."
         )
         modelo_efetivo = "base"
 
-    st.markdown(
-        f"<div class='card card-soft'>🎯 Whisper: modelo efetivo "
-        f"<code>{modelo_efetivo}</code> em <code>{device}</code></div>",
-        unsafe_allow_html=True,
-    )
+    st.write(f"🎯 Whisper: modelo efetivo `{modelo_efetivo}` em `{device}`")
 
     with st.spinner(f"Carregando modelo Whisper {modelo_efetivo}..."):
         model = carregar_modelo_whisper(modelo_efetivo, device)
 
     partes = dividir_em_chunks(audio, sr, chunk_seg)
     total_partes = len(partes)
-    st.markdown(
-        f"<div class='card card-soft'>📦 Partes (Whisper): <b>{total_partes}</b> "
-        f"de ~{chunk_seg}s</div>",
-        unsafe_allow_html=True,
-    )
+    st.write(f"📦 Partes (Whisper): **{total_partes}**")
 
-    # Barra de progresso na sidebar
-    sidebar_progress = st.sidebar.progress(0.0, text="Progresso geral dos chunks")
-    sidebar_info = st.sidebar.empty()
-
-    # Multithreading real nos chunks
-    max_workers = min(4, os.cpu_count() or 2)
-    resultados = {}
-    inicio_geral = time.time()
-
-    with ThreadPoolExecutor(max_workers=max_workers) as executor:
-        futures = []
-        for idx, (parte, t_ini, t_fim) in enumerate(partes, start=1):
-            futures.append(
-                executor.submit(_transcrever_chunk_whisper, model, parte, t_ini, t_fim, idx)
-            )
-
-        for done, fut in enumerate(as_completed(futures), start=1):
-            data = fut.result()
-            idx = data["idx"]
-            resultados[idx] = data
-
-            sidebar_progress.progress(done / total_partes)
-            sidebar_info.markdown(
-                f"Processando chunk {done}/{total_partes} "
-                f"(threads ativas: {max_workers})"
-            )
-
-    # Ordenar resultados pelo índice original
+    progresso = st.progress(0)
     texto_final = ""
     timestamps = []
+    inicio_geral = time.time()
 
-    for idx in sorted(resultados.keys()):
-        data = resultados[idx]
-        t_ini = data["t_ini"]
-        segs = data["segments"]
-        tempo_parte = data["tempo"]
-
+    for idx, (parte, t_ini, t_fim) in enumerate(partes, start=1):
         janela_min = t_ini / 60
-        janela_max = data["t_fim"] / 60
+        janela_max = t_fim / 60
+        st.write(f"📝 Whisper – Parte {idx}/{total_partes} – {janela_min:.1f}–{janela_max:.1f} min")
 
-        st.markdown(
-            f"<div class='card card-soft'>📝 Whisper – Parte {idx}/{total_partes} "
-            f"({janela_min:.1f}–{janela_max:.1f} min) concluída em {tempo_parte:.1f}s</div>",
-            unsafe_allow_html=True,
+        inicio_parte = time.time()
+        result = model.transcribe(
+            parte,
+            language="pt",
+            task="transcribe",
+            temperature=[0.0, 0.2],
+            best_of=5,
+            initial_prompt=BASE_PROMPT,
+            fp16=fp16,
         )
+        tempo_parte = time.time() - inicio_parte
 
+        segs = result.get("segments", [])
         if segs:
-            preview = segs[0]["text"][:120]
-            st.markdown(
-                f"<div class='card card-soft'>Prévia da parte {idx}: "
-                f"<i>{preview}...</i></div>",
-                unsafe_allow_html=True,
-            )
             for seg in segs:
                 texto = seg["text"]
                 start = float(seg["start"]) + t_ini
                 end = float(seg["end"]) + t_ini
                 timestamps.append({"start": start, "end": end, "text": texto})
                 texto_final += texto + " "
+
+            st.write(f"✅ Parte {idx} concluída em {tempo_parte:.1f}s")
+            st.write(f"Prévia: _{segs[0]['text'][:120]}..._")
         else:
-            st.warning(f"Nenhum texto detectado na parte {idx}.")
+            st.warning("⚠️ Nenhum texto detectado nesta parte.")
+
+        progresso.progress(idx / total_partes)
 
     tempo_total = time.time() - inicio_geral
     return texto_final, timestamps, tempo_total, duracao_min
@@ -348,30 +211,33 @@ OV_MODEL_ID = "jonatasgrosman/wav2vec2-large-xlsr-53-portuguese"
 
 @st.cache_resource(show_spinner=True)
 def carregar_modelo_openvino():
+    """
+    Carrega modelo CTC em OpenVINO.
+    Usa AUTO: tenta GPU/NPU/CPU automatizado.
+    """
     processor = AutoProcessor.from_pretrained(OV_MODEL_ID)
     ov_model = OVModelForCTC.from_pretrained(
         OV_MODEL_ID,
         export=True,
-        device="AUTO",
+        device="AUTO",  # AUTO tenta GPU/NPU/CPU
     )
     return processor, ov_model
 
 
 def transcrever_com_openvino(audio, sr, chunk_seg: int):
+    """
+    Tenta usar OpenVINO. Se der erro (pyctcdecode, encoding etc),
+    devolve texto=None para o chamador poder fazer fallback pro Whisper.
+    """
     duracao_min = len(audio) / sr / 60
 
     if not OPENVINO_OK:
         st.error("OpenVINO / optimum-intel não instalados. Use o backend Whisper.")
         return None, None, 0.0, duracao_min
 
-    st.sidebar.markdown(
-        "<div class='card card-soft'><b>Backend:</b> OpenVINO<br>"
-        "Device='AUTO' (tenta GPU/NPU/CPU Intel).</div>",
-        unsafe_allow_html=True,
-    )
-
     st.info("OpenVINO ativado. Device='AUTO' (tenta GPU/NPU/CPU Intel).")
 
+    # Tentativa protegida de carregar modelo/processador
     try:
         processor, ov_model = carregar_modelo_openvino()
     except Exception as e:
@@ -383,16 +249,12 @@ def transcrever_com_openvino(audio, sr, chunk_seg: int):
         st.warning("Voltando automaticamente para o backend Whisper.")
         return None, None, 0.0, duracao_min
 
+    # Se chegou aqui, modelo carregou OK
     partes = dividir_em_chunks(audio, sr, chunk_seg)
     total_partes = len(partes)
-    st.markdown(
-        f"<div class='card card-soft'>📦 Partes (OpenVINO): <b>{total_partes}</b></div>",
-        unsafe_allow_html=True,
-    )
+    st.write(f"📦 Partes (OpenVINO): **{total_partes}**")
 
-    sidebar_progress = st.sidebar.progress(0.0, text="Progresso geral dos chunks (OpenVINO)")
-    sidebar_info = st.sidebar.empty()
-
+    progresso = st.progress(0)
     texto_final = ""
     timestamps = []
     inicio_geral = time.time()
@@ -400,12 +262,9 @@ def transcrever_com_openvino(audio, sr, chunk_seg: int):
     for idx, (parte, t_ini, t_fim) in enumerate(partes, start=1):
         janela_min = t_ini / 60
         janela_max = t_fim / 60
-        st.markdown(
-            f"<div class='card card-soft'>📝 OpenVINO – Parte {idx}/{total_partes} "
-            f"({janela_min:.1f}–{janela_max:.1f} min)</div>",
-            unsafe_allow_html=True,
-        )
+        st.write(f"📝 OpenVINO – Parte {idx}/{total_partes} – {janela_min:.1f}–{janela_max:.1f} min")
 
+        # garantir float32 numpy
         parte_np = parte.astype("float32")
 
         inputs = processor(
@@ -427,8 +286,10 @@ def transcrever_com_openvino(audio, sr, chunk_seg: int):
             {"start": float(t_ini), "end": float(t_fim), "text": text}
         )
 
-        sidebar_progress.progress(idx / total_partes)
-        sidebar_info.markdown(f"Chunk {idx}/{total_partes} concluído (OpenVINO).")
+        st.write(f"✅ Parte {idx} concluída.")
+        st.write(f"Prévia: _{text[:120]}..._")
+
+        progresso.progress(idx / total_partes)
 
     tempo_total = time.time() - inicio_geral
     return texto_final, timestamps, tempo_total, duracao_min
@@ -437,14 +298,14 @@ def transcrever_com_openvino(audio, sr, chunk_seg: int):
 # =============================
 # Sidebar – escolha de backend
 # =============================
-st.sidebar.header("Configurações")
+st.sidebar.header("Backend de processamento")
 
 backend_options = ["Whisper (oficial)", "OpenVINO (experimental)"]
 backend = st.sidebar.radio(
     "Motor de transcrição",
     backend_options,
     index=0,
-    help="OpenVINO tenta usar NPU/GPU Intel. Se der erro, cai para Whisper automaticamente.",
+    help="OpenVINO tenta usar NPU/GPU Intel via device=AUTO. Se der erro, cai para Whisper.",
 )
 
 chunk_segundos = st.sidebar.slider(
@@ -455,6 +316,7 @@ chunk_segundos = st.sidebar.slider(
     step=30,
 )
 
+# configuração de modelo Whisper
 modelos = {
     "tiny – mais rápido (menos preciso)": "tiny",
     "base – equilíbrio recomendado": "base",
@@ -463,7 +325,7 @@ modelos = {
     "large-v3 – máxima precisão (muito pesado)": "large-v3",
 }
 modelo_label = st.sidebar.selectbox(
-    "Modelo Whisper (quando backend = Whisper)",
+    "Modelo Whisper (usado quando backend = Whisper)",
     list(modelos.keys()),
     index=1,
 )
@@ -472,22 +334,19 @@ modelo_whisper = modelos[modelo_label]
 if backend == "OpenVINO (experimental)" and not OPENVINO_OK:
     st.sidebar.error("OpenVINO / optimum-intel não instalados. Este backend não estará disponível.")
 
+
 # =============================
 # Upload de áudio
 # =============================
-st.markdown("<div class='card'>Envie o áudio da sessão ou reunião para iniciar a transcrição.</div>", unsafe_allow_html=True)
-
 audio_file = st.file_uploader(
-    "Arquivo de áudio",
+    "Envie o arquivo de áudio da sessão/ata",
     type=["mp3", "wav", "m4a", "ogg", "flac", "aac", "wma"],
 )
 
 if audio_file is not None:
-    st.markdown(
-        f"<div class='card card-soft'>Arquivo carregado: <b>{audio_file.name}</b><br>"
-        f"Tamanho aproximado: {audio_file.size / 1024 / 1024:.2f} MB</div>",
-        unsafe_allow_html=True,
-    )
+    st.success(f"Arquivo carregado: {audio_file.name}")
+    st.write(f"Tamanho aproximado: {audio_file.size / 1024 / 1024:.2f} MB")
+
 
 # =============================
 # Botão principal
@@ -516,24 +375,20 @@ if st.button("🚀 Transcrever agora", disabled=(audio_file is None)):
 
             # Escolher backend
             if backend == "OpenVINO (experimental)" and OPENVINO_OK:
+                # tenta OpenVINO
                 texto, ts, tempo_proc, duracao_min = transcrever_com_openvino(
                     audio, sr, chunk_segundos
                 )
 
+                # se deu ruim (texto=None), faz fallback automático pro Whisper
                 if texto is None:
-                    st.markdown(
-                        "<div class='card card-warn'>Usando backend Whisper como fallback.</div>",
-                        unsafe_allow_html=True,
-                    )
+                    st.info("Usando backend Whisper como fallback.")
                     texto, ts, tempo_proc, duracao_min = transcrever_com_whisper(
                         audio, sr, modelo_whisper, chunk_segundos
                     )
             else:
                 if backend == "OpenVINO (experimental)" and not OPENVINO_OK:
-                    st.markdown(
-                        "<div class='card card-warn'>OpenVINO não disponível. Usando Whisper.</div>",
-                        unsafe_allow_html=True,
-                    )
+                    st.warning("OpenVINO não disponível. Usando Whisper.")
                 texto, ts, tempo_proc, duracao_min = transcrever_com_whisper(
                     audio, sr, modelo_whisper, chunk_segundos
                 )
@@ -541,16 +396,9 @@ if st.button("🚀 Transcrever agora", disabled=(audio_file is None)):
             texto = pos_processar_texto(texto)
 
             if not texto.strip():
-                st.markdown(
-                    "<div class='card card-error'>Nenhum texto final gerado. "
-                    "Verifique se o áudio tem fala clara.</div>",
-                    unsafe_allow_html=True,
-                )
+                st.error("Nenhum texto final gerado. Verifique se o áudio tem fala clara.")
             else:
-                st.markdown(
-                    "<div class='card card-success'>🎉 Transcrição concluída com sucesso!</div>",
-                    unsafe_allow_html=True,
-                )
+                st.success("🎉 Transcrição concluída com sucesso!")
 
                 col1, col2 = st.columns(2)
                 with col1:
@@ -585,4 +433,4 @@ if st.button("🚀 Transcrever agora", disabled=(audio_file is None)):
             except Exception:
                 pass
 else:
-    st.info("Envie o áudio e clique em Transcrever agora.")
+    st.info("Envie o áudio e clique em '🚀 Transcrever agora'.")
