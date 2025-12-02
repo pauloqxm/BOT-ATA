@@ -1198,19 +1198,68 @@ with tab3:
         </div>
         """, unsafe_allow_html=True)
     else:
-        # Garante estado inicial seguro
-        if "texto_editado" not in st.session_state:
-            st.session_state["texto_editado"] = texto_disponivel
-        
-        if "text_editor_area" not in st.session_state:
-            st.session_state["text_editor_area"] = st.session_state["texto_editado"]
-        elif not st.session_state["text_editor_area"]:
-            # se estiver vazio, puxa o texto editado
-            st.session_state["text_editor_area"] = st.session_state["texto_editado"]
-        
         texto_original = texto_disponivel
-        
-        # Estatísticas do texto original
+
+        # =============================
+        # 1) Processa ações pendentes ANTES de criar widgets
+        # =============================
+        action = st.session_state.get("editor_action", None)
+
+        if action is not None:
+            # Base para as transformações: o que está no editor, se existir, senão o original
+            texto_base = st.session_state.get("text_editor_area", texto_original)
+
+            # Pega configs salvas (ou defaults)
+            max_caracteres = st.session_state.get("max_caracteres_paragrafos", 500)
+            aplicar_correcoes_cfg = st.session_state.get("aplicar_correcoes_editor", True)
+
+            novo_texto = texto_base
+
+            if action == "organizar":
+                novo_texto = organizar_paragrafos(texto_base, max_caracteres=max_caracteres)
+
+            elif action == "capitalizar":
+                novo_texto = capitalizar_frases(texto_base)
+
+            elif action == "corrigir_pontuacao":
+                novo_texto = corrigir_pontuacao(texto_base)
+
+            elif action == "formatar_ata":
+                novo_texto = formatar_ata(texto_base)
+
+            elif action == "restaurar":
+                novo_texto = texto_original
+
+            elif action == "aplicar_todas":
+                texto_processado = texto_original
+                if aplicar_correcoes_cfg:
+                    texto_processado = pos_processar_texto(texto_processado)
+                texto_processado = organizar_paragrafos(texto_processado, max_caracteres=max_caracteres)
+                texto_processado = capitalizar_frases(texto_processado)
+                texto_processado = corrigir_pontuacao(texto_processado)
+                texto_processado = formatar_ata(texto_processado)
+                novo_texto = texto_processado
+
+            elif action == "limpar":
+                novo_texto = ""
+
+            # Atualiza estado do editor ANTES de criar o widget
+            st.session_state["text_editor_area"] = novo_texto
+            st.session_state["texto_editado"] = novo_texto
+            st.session_state["editor_action"] = None  # limpa ação
+
+        # Garante valores iniciais se ainda não existem
+        if "text_editor_area" not in st.session_state:
+            st.session_state["text_editor_area"] = texto_original
+
+        if "texto_editado" not in st.session_state:
+            st.session_state["texto_editado"] = st.session_state["text_editor_area"]
+
+        texto_editado = st.session_state.get("text_editor_area", texto_original)
+
+        # =============================
+        # 2) Estatísticas do texto original
+        # =============================
         st.markdown("### 📊 Estatísticas do Texto Original")
         
         col_stats1, col_stats2, col_stats3, col_stats4 = st.columns(4)
@@ -1227,7 +1276,9 @@ with tab3:
             paragrafos_orig = len([p for p in texto_original.split('\n\n') if p.strip()])
             st.metric("Parágrafos", paragrafos_orig)
         
-        # Configurações avançadas
+        # =============================
+        # 3) Configurações avançadas (slider + checkbox com keys)
+        # =============================
         with st.expander("⚙️ Configurações Avançadas"):
             col_adv1, col_adv2 = st.columns(2)
             
@@ -1236,88 +1287,70 @@ with tab3:
                     "Máximo de caracteres por parágrafo:",
                     min_value=200,
                     max_value=1000,
-                    value=500,
+                    value=st.session_state.get("max_caracteres_paragrafos", 500),
                     step=50,
-                    help="Controla o tamanho máximo de cada parágrafo"
+                    help="Controla o tamanho máximo de cada parágrafo",
+                    key="max_caracteres_paragrafos"
                 )
             
             with col_adv2:
                 aplicar_correcoes = st.checkbox(
                     "Aplicar correções automáticas (biblioteca)",
-                    value=True,
-                    help="Aplica as correções da biblioteca durante o processamento"
+                    value=st.session_state.get("aplicar_correcoes_editor", True),
+                    help="Aplica as correções da biblioteca durante o processamento",
+                    key="aplicar_correcoes_editor"
                 )
         
-        # Controles de formatação
+        # =============================
+        # 4) Ferramentas de formatação (botões só disparam AÇÃO + rerun)
+        # =============================
         st.markdown("### ⚙️ Ferramentas de Formatação")
         
         col_tools1, col_tools2, col_tools3, col_tools4 = st.columns(4)
         
         with col_tools1:
-            organizar_paragrafos_btn = st.button(
+            if st.button(
                 "📝 Organizar Parágrafos",
                 use_container_width=True,
                 type="primary",
                 key="btn_organizar_paragrafos"
-            )
+            ):
+                st.session_state["editor_action"] = "organizar"
+                st.rerun()
         
         with col_tools2:
-            capitalizar_btn = st.button(
+            if st.button(
                 "🔠 Capitalizar Frases",
                 use_container_width=True,
                 type="secondary",
                 key="btn_capitalizar"
-            )
+            ):
+                st.session_state["editor_action"] = "capitalizar"
+                st.rerun()
         
         with col_tools3:
-            corrigir_pontuacao_btn = st.button(
+            if st.button(
                 "📌 Corrigir Pontuação",
                 use_container_width=True,
                 type="secondary",
                 key="btn_corrigir_pontuacao"
-            )
+            ):
+                st.session_state["editor_action"] = "corrigir_pontuacao"
+                st.rerun()
         
         with col_tools4:
-            formatar_ata_btn = st.button(
+            if st.button(
                 "📋 Formatar como ATA",
                 use_container_width=True,
                 type="secondary",
                 key="btn_formatar_ata"
-            )
+            ):
+                st.session_state["editor_action"] = "formatar_ata"
+                st.rerun()
         
-        # Sempre usar o texto ATUAL do editor como base
-        texto_base = st.session_state.get("text_editor_area", "")
-        
-        # Aplica as transformações quando os botões são clicados
-        if organizar_paragrafos_btn:
-            novo = organizar_paragrafos(texto_base, max_caracteres=max_caracteres)
-            st.session_state["text_editor_area"] = novo
-            st.session_state["texto_editado"] = novo
-            st.success("✅ Texto organizado em parágrafos!")
-            st.rerun()
-        
-        if capitalizar_btn:
-            novo = capitalizar_frases(texto_base)
-            st.session_state["text_editor_area"] = novo
-            st.session_state["texto_editado"] = novo
-            st.success("✅ Frases capitalizadas!")
-            st.rerun()
-        
-        if corrigir_pontuacao_btn:
-            novo = corrigir_pontuacao(texto_base)
-            st.session_state["text_editor_area"] = novo
-            st.session_state["texto_editado"] = novo
-            st.success("✅ Pontuação corrigida!")
-            st.rerun()
-        
-        if formatar_ata_btn:
-            novo = formatar_ata(texto_base)
-            st.session_state["text_editor_area"] = novo
-            st.session_state["texto_editado"] = novo
-            st.success("✅ Texto formatado como ATA!")
-            st.rerun()
-        
-        # Editor de texto – original x editado
+        # =============================
+        # 5) Editor de texto – original x editado
+        # =============================
         st.markdown("### ✍️ Editor de Texto")
         
         col_view1, col_view2 = st.columns(2)
@@ -1334,19 +1367,22 @@ with tab3:
         
         with col_view2:
             st.markdown("#### 📝 Texto Editado")
+            # Aqui o widget é criado; daqui pra baixo NÃO mexemos mais direto em text_editor_area
             texto_editado_widget = st.text_area(
                 "Edite seu texto:",
-                value=st.session_state.get("text_editor_area", ""),
+                value=st.session_state.get("text_editor_area", texto_original),
                 height=300,
                 label_visibility="collapsed",
                 key="text_editor_area"
             )
-            # Sincroniza com texto_editado
+            # O valor que o usuário digitou fica sincronizado automaticamente em st.session_state["text_editor_area"]
             st.session_state["texto_editado"] = texto_editado_widget
         
         texto_editado = st.session_state.get("texto_editado", "")
         
-        # Estatísticas do texto editado
+        # =============================
+        # 6) Estatísticas do texto editado
+        # =============================
         st.markdown("### 📈 Comparação")
         
         col_comp1, col_comp2, col_comp3, col_comp4 = st.columns(4)
@@ -1389,43 +1425,31 @@ with tab3:
                 help="Palavras por parágrafo"
             )
         
-        # Botões de ação
+        # =============================
+        # 7) Ações gerais (restaurar, aplicar todas, limpar)
+        # =============================
         st.markdown("### 💾 Ações")
         
         col_actions1, col_actions2, col_actions3 = st.columns(3)
         
         with col_actions1:
             if st.button("↩️ Restaurar Original", use_container_width=True, key="btn_restaurar_original"):
-                st.session_state["texto_editado"] = texto_original
-                st.session_state["text_editor_area"] = texto_original
-                st.success("✅ Texto restaurado para o original!")
+                st.session_state["editor_action"] = "restaurar"
                 st.rerun()
         
         with col_actions2:
             if st.button("✨ Aplicar Todas", use_container_width=True, type="primary", key="btn_aplicar_todas"):
-                texto_processado = texto_original
-                
-                if aplicar_correcoes:
-                    texto_processado = pos_processar_texto(texto_processado)
-                
-                texto_processado = organizar_paragrafos(texto_processado, max_caracteres=max_caracteres)
-                texto_processado = capitalizar_frases(texto_processado)
-                texto_processado = corrigir_pontuacao(texto_processado)
-                texto_processado = formatar_ata(texto_processado)
-                
-                st.session_state["texto_editado"] = texto_processado
-                st.session_state["text_editor_area"] = texto_processado
-                st.success("✅ Todas as transformações aplicadas!")
+                st.session_state["editor_action"] = "aplicar_todas"
                 st.rerun()
         
         with col_actions3:
             if st.button("🗑️ Limpar Editor", use_container_width=True, type="secondary", key="btn_limpar_editor"):
-                st.session_state["texto_editado"] = ""
-                st.session_state["text_editor_area"] = ""
-                st.success("✅ Editor limpo!")
+                st.session_state["editor_action"] = "limpar"
                 st.rerun()
         
-        # Download do texto editado
+        # =============================
+        # 8) Download do texto editado
+        # =============================
         st.markdown("### 📥 Download")
         
         if texto_editado:
@@ -1485,6 +1509,7 @@ with tab3:
                     use_container_width=True,
                     key="download_html_version"
                 )
+
 
 
 # Fechar container principal
