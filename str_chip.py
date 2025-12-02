@@ -1218,14 +1218,9 @@ with tab3:
             if action == "organizar":
                 novo_texto = organizar_paragrafos(texto_base, max_caracteres=max_caracteres)
 
-            elif action == "capitalizar":
-                novo_texto = capitalizar_frases(texto_base)
-
-            elif action == "corrigir_pontuacao":
-                novo_texto = corrigir_pontuacao(texto_base)
-
-            elif action == "formatar_ata":
-                novo_texto = formatar_ata(texto_base)
+            elif action == "corrigir_palavras":
+                # Usa biblioteca de correções (correcoes_custom.json + base)
+                novo_texto = pos_processar_texto(texto_base)
 
             elif action == "restaurar":
                 novo_texto = texto_original
@@ -1277,7 +1272,7 @@ with tab3:
             st.metric("Parágrafos", paragrafos_orig)
         
         # =============================
-        # 3) Configurações avançadas (slider + checkbox com keys)
+        # 3) Configurações avançadas
         # =============================
         with st.expander("⚙️ Configurações Avançadas"):
             col_adv1, col_adv2 = st.columns(2)
@@ -1295,18 +1290,18 @@ with tab3:
             
             with col_adv2:
                 aplicar_correcoes = st.checkbox(
-                    "Aplicar correções automáticas (biblioteca)",
+                    "Aplicar correções automáticas em 'Aplicar Todas'",
                     value=st.session_state.get("aplicar_correcoes_editor", True),
-                    help="Aplica as correções da biblioteca durante o processamento",
+                    help="Usa a biblioteca de correções quando você clicar em 'Aplicar Todas'",
                     key="aplicar_correcoes_editor"
                 )
         
         # =============================
-        # 4) Ferramentas de formatação (botões só disparam AÇÃO + rerun)
+        # 4) Ferramentas de formatação – APENAS 2 BOTÕES
         # =============================
         st.markdown("### ⚙️ Ferramentas de Formatação")
         
-        col_tools1, col_tools2, col_tools3, col_tools4 = st.columns(4)
+        col_tools1, col_tools2 = st.columns(2)
         
         with col_tools1:
             if st.button(
@@ -1320,32 +1315,13 @@ with tab3:
         
         with col_tools2:
             if st.button(
-                "🔠 Capitalizar Frases",
+                "🔤 Corrigir Palavras (Biblioteca)",
                 use_container_width=True,
                 type="secondary",
-                key="btn_capitalizar"
+                key="btn_corrigir_palavras"
             ):
-                st.session_state["editor_action"] = "capitalizar"
-                st.rerun()
-        
-        with col_tools3:
-            if st.button(
-                "📌 Corrigir Pontuação",
-                use_container_width=True,
-                type="secondary",
-                key="btn_corrigir_pontuacao"
-            ):
-                st.session_state["editor_action"] = "corrigir_pontuacao"
-                st.rerun()
-        
-        with col_tools4:
-            if st.button(
-                "📋 Formatar como ATA",
-                use_container_width=True,
-                type="secondary",
-                key="btn_formatar_ata"
-            ):
-                st.session_state["editor_action"] = "formatar_ata"
+                # Aqui ele vai aplicar pos_processar_texto usando correcoes_custom.json + base
+                st.session_state["editor_action"] = "corrigir_palavras"
                 st.rerun()
         
         # =============================
@@ -1367,7 +1343,6 @@ with tab3:
         
         with col_view2:
             st.markdown("#### 📝 Texto Editado")
-            # Aqui o widget é criado; daqui pra baixo NÃO mexemos mais direto em text_editor_area
             texto_editado_widget = st.text_area(
                 "Edite seu texto:",
                 value=st.session_state.get("text_editor_area", texto_original),
@@ -1375,7 +1350,6 @@ with tab3:
                 label_visibility="collapsed",
                 key="text_editor_area"
             )
-            # O valor que o usuário digitou fica sincronizado automaticamente em st.session_state["text_editor_area"]
             st.session_state["texto_editado"] = texto_editado_widget
         
         texto_editado = st.session_state.get("texto_editado", "")
@@ -1509,9 +1483,6 @@ with tab3:
                     use_container_width=True,
                     key="download_html_version"
                 )
-
-
-
 # Fechar container principal
 st.markdown('</div>', unsafe_allow_html=True)
 
