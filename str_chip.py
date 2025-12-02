@@ -2,34 +2,32 @@ import os
 import time
 import warnings
 import tempfile
+import json
+from pathlib import Path
 
-# =============================
-# Ajustes de ambiente
-# =============================
 os.environ["HF_HUB_DISABLE_SYMLINKS_WARNING"] = "1"
 os.environ["KMP_DUPLICATE_LIB_OK"] = "True"
 warnings.filterwarnings("ignore", message=".*huggingface_hub.*")
 
 import torch
 
-# tentar espremer a CPU sem brigar com o Streamlit
+# Ajuste de threads para não brigar com o Streamlit
 num_threads = os.cpu_count() or 4
 try:
     torch.set_num_threads(num_threads)
 except RuntimeError:
-    # se o PyTorch reclamar porque já tem thread rodando, ignora
     pass
 os.environ["OMP_NUM_THREADS"] = str(num_threads)
 
 import librosa
-import soundfile as sf  # ainda pode ser útil depois
+import soundfile as sf  # mantido caso precise no futuro
 import streamlit as st
 
-# Whisper oficial (CPU/GPU NVIDIA)
+# Whisper oficial
 import whisper
 
 # =============================
-# Config Streamlit
+# Configuração Streamlit
 # =============================
 st.set_page_config(
     page_title="Transcrição ATA – Whisper oficial",
@@ -39,15 +37,43 @@ st.set_page_config(
 st.title("📝 Transcrição de Ata – Whisper oficial")
 st.caption(
     "Usa exclusivamente o Whisper oficial da OpenAI. "
-    "Você escolhe o modelo e ele será mantido, mesmo que fique mais lento na CPU."
+    "O modelo escolhido é mantido mesmo que o processamento fique mais lento."
 )
+
+# =============================
+# Arquivo de correções personalizadas
+# =============================
+BASE_DIR = Path(__file__).parent if "__file__" in globals() else Path(".")
+CORRECOES_FILE = BASE_DIR / "correcoes_custom.json"
+
+
+def carregar_correcoes_custom():
+    """Carrega as correções personalizadas do arquivo JSON."""
+    if CORRECOES_FILE.exists():
+        try:
+            with open(CORRECOES_FILE, "r", encoding="utf-8") as f:
+                data = json.load(f)
+            if isinstance(data, dict):
+                return data
+        except Exception:
+            return {}
+    return {}
+
+
+def salvar_correcoes_custom(data: dict):
+    """Salva as correções personalizadas em arquivo JSON."""
+    try:
+        with open(CORRECOES_FILE, "w", encoding="utf-8") as f:
+            json.dump(data, f, ensure_ascii=False, indent=2)
+    except Exception as e:
+        st.error(f"Erro ao salvar correções. {e}")
+
 
 # =============================
 # Estado da biblioteca de correções
 # =============================
 if "correcoes_custom" not in st.session_state:
-    st.session_state["correcoes_custom"] = {}
-
+    st.session_state["correcoes_custom"] = carregar_correcoes_custom()
 
 # =============================
 # Utilitários gerais
@@ -60,7 +86,7 @@ BASE_PROMPT = (
 
 
 def get_correcoes_dicionario():
-    """Dicionário base + dicionário customizado vindo da aba Biblioteca."""
+    """Dicionário base somado às correções customizadas."""
     correcoes_base = {
         " pq ": " porque ",
         " tb ": " também ",
@@ -83,7 +109,6 @@ def get_correcoes_dicionario():
         " qd ": " quando ",
         " qq ": " qualquer ",
     }
-    # customizadas pelo usuário, salvas com espaços de margem
     correcoes_custom = st.session_state.get("correcoes_custom", {})
     correcoes = {}
     correcoes.update(correcoes_base)
@@ -92,6 +117,7 @@ def get_correcoes_dicionario():
 
 
 def pos_processar_texto(texto: str) -> str:
+    """Aplica a biblioteca de correções ao texto transcrito."""
     if not texto:
         return ""
 
@@ -134,7 +160,7 @@ def formatar_timestamps(timestamps):
 
 
 # =============================
-# Backend WHISPER (CPU / GPU NVIDIA)
+# Whisper oficial
 # =============================
 @st.cache_resource(show_spinner=True)
 def carregar_modelo_whisper(nome_modelo: str, device: str):
@@ -149,22 +175,21 @@ def transcrever_com_whisper(audio, sr, modelo_nome: str, chunk_seg: int):
     else:
         device = "cpu"
         fp16 = False
-        device_msg = "GPU NVIDIA não detectada. Usando CPU (pode ficar mais lento)."
+        device_msg = "GPU NVIDIA não detectada. Usando CPU, pode ficar mais lento."
 
     st.info(device_msg)
 
     duracao_min = len(audio) / sr / 60
-    modelo_efetivo = modelo_nome  # mantém exatamente o modelo escolhido
-    st.write(f"🎯 Whisper: modelo `{modelo_efetivo}` em `{device}`")
+    modelo_efetivo = modelo_nome
+    st.write(f"🎯 Whisper oficial usando o modelo `{modelo_efetivo}` em `{device}`")
 
     with st.spinner(f"Carregando modelo Whisper {modelo_efetivo}..."):
         model = carregar_modelo_whisper(modelo_efetivo, device)
 
     partes = dividir_em_chunks(audio, sr, chunk_seg)
     total_partes = len(partes)
-    st.write(f"📦 Partes processadas: **{total_partes}**")
+    st.write(f"📦 Partes a processar: **{total_partes}**")
 
-    # barra de progresso geral (conteúdo) e na sidebar
     progresso = st.progress(0)
     progresso_sidebar = st.sidebar.progress(0)
 
@@ -221,28 +246,26 @@ def transcrever_com_whisper(audio, sr, modelo_nome: str, chunk_seg: int):
 st.sidebar.header("Configurações de processamento")
 
 chunk_segundos = st.sidebar.slider(
-    "Duração de cada parte (segundos)",
+    "Duração de cada parte em segundos",
     min_value=60,
     max_value=240,
     value=120,
     step=30,
 )
 
-# configuração de modelo Whisper
 modelos = {
-    "tiny – mais rápido (menos preciso)": "tiny",
+    "tiny – mais rápido, menos preciso": "tiny",
     "base – equilíbrio recomendado": "base",
-    "small – mais preciso (mais pesado)": "small",
-    "medium – alta precisão (pesado)": "medium",
-    "large-v3 – máxima precisão (muito pesado)": "large-v3",
+    "small – mais preciso, mais pesado": "small",
+    "medium – alta precisão, pesado": "medium",
+    "large-v3 – máxima precisão, muito pesado": "large-v3",
 }
 modelo_label = st.sidebar.selectbox(
-    "Modelo Whisper",
+    "Modelo Whisper oficial",
     list(modelos.keys()),
     index=1,
 )
 modelo_whisper = modelos[modelo_label]
-
 
 # =============================
 # Abas principais
@@ -255,20 +278,18 @@ tab_transcricao, tab_biblioteca = st.tabs(
 # Aba 1 – Transcrição
 # =============================
 with tab_transcricao:
-    # Upload de áudio
     audio_file = st.file_uploader(
-        "Envie o arquivo de áudio da sessão/ata",
+        "Envie o arquivo de áudio da sessão ou ata",
         type=["mp3", "wav", "m4a", "ogg", "flac", "aac", "wma"],
     )
 
     if audio_file is not None:
         st.success(f"Arquivo carregado. Nome: {audio_file.name}")
         tamanho_mb = audio_file.size / 1024 / 1024
-        st.write(f"Tamanho aproximado: {tamanho_mb:.2f} MB")
+        st.write(f"Tamanho aproximado do arquivo: {tamanho_mb:.2f} MB")
     else:
         tamanho_mb = 0.0
 
-    # Botão principal
     if st.button("🚀 Transcrever agora", disabled=(audio_file is None)):
         if audio_file is None:
             st.warning("Envie um arquivo de áudio primeiro.")
@@ -278,8 +299,7 @@ with tab_transcricao:
                 caminho_audio = tmp.name
 
             try:
-                # Pré-processar áudio
-                with st.spinner("🔧 Pré-processando áudio..."):
+                with st.spinner("🔧 Pré processando áudio..."):
                     audio, sr_original = librosa.load(caminho_audio, sr=None, mono=True)
 
                     max_abs = max(1e-8, float(abs(audio).max()))
@@ -297,14 +317,12 @@ with tab_transcricao:
                     partes_preview = dividir_em_chunks(audio, sr, chunk_segundos)
                     total_partes_preview = len(partes_preview)
 
-                # KPIs iniciais ao ler/preparar o arquivo
                 st.markdown("### 📊 Visão geral do arquivo")
                 col_a, col_b, col_c = st.columns(3)
                 col_a.metric("Duração do áudio", f"{duracao_min_pre:.1f} min")
                 col_b.metric("Tamanho do arquivo", f"{tamanho_mb:.2f} MB")
                 col_c.metric("Quantidade de partes", f"{total_partes_preview}")
 
-                # Transcrição com Whisper oficial
                 (
                     texto,
                     ts,
@@ -325,43 +343,42 @@ with tab_transcricao:
                 else:
                     st.success("🎉 Transcrição concluída com sucesso.")
 
-                    # KPIs pós-processamento
                     st.markdown("### 📈 Indicadores de processamento")
                     col1, col2 = st.columns(2)
                     col1.metric("Duração do áudio", f"{duracao_min:.1f} min")
                     col2.metric("Tempo total de processamento", f"{tempo_proc:.1f} s")
 
-                    # Barras de desempenho por parte (gráfico de barras)
                     if tempos_partes:
-                        st.markdown("### 📊 Desempenho por parte")
-                        dados_barra = {
-                            "Parte": list(range(1, total_partes + 1)),
-                            "Tempo (s)": tempos_partes,
-                        }
-                        st.bar_chart(dados_barra, x="Parte", y="Tempo (s)")
+                        import pandas as pd
 
-                    # Texto final – apenas 400 caracteres na interface
-                    st.subheader("🧾 Texto da Ata (prévia – 400 caracteres)")
+                        st.markdown("### 📊 Desempenho por parte")
+                        df_tempos = pd.DataFrame(
+                            {
+                                "Parte": list(range(1, total_partes + 1)),
+                                "Tempo (s)": tempos_partes,
+                            }
+                        ).set_index("Parte")
+                        st.bar_chart(df_tempos)
+
+                    st.subheader("🧾 Texto da ata – prévia com 400 caracteres")
                     preview = texto[:400]
                     if len(texto) > 400:
                         preview += "..."
                     st.write(preview)
 
-                    # Timestamps completos
-                    st.subheader("⏱️ Timestamps")
+                    st.subheader("⏱️ Timestamps completos")
                     texto_ts = formatar_timestamps(ts)
                     st.text(texto_ts)
 
-                    # Downloads – texto completo
                     nome_base = os.path.splitext(audio_file.name)[0]
                     st.download_button(
-                        "📥 Baixar transcrição completa (.txt)",
+                        "📥 Baixar transcrição completa em TXT",
                         data=texto,
                         file_name=f"TRANSCRICAO_{nome_base}.txt",
                         mime="text/plain",
                     )
                     st.download_button(
-                        "📥 Baixar timestamps (.txt)",
+                        "📥 Baixar timestamps em TXT",
                         data=texto_ts,
                         file_name=f"TIMESTAMPS_{nome_base}.txt",
                         mime="text/plain",
@@ -373,8 +390,7 @@ with tab_transcricao:
                 except Exception:
                     pass
     else:
-        st.info("Envie o áudio e clique em '🚀 Transcrever agora'.")
-
+        st.info("Envie o áudio e clique em Transcrever agora.")
 
 # =============================
 # Aba 2 – Biblioteca de correções
@@ -382,16 +398,15 @@ with tab_transcricao:
 with tab_biblioteca:
     st.markdown("### 🧩 Palavras e expressões para correção automática")
     st.write(
-        "Aqui você pode adicionar palavras ou abreviações que serão trocadas "
-        "automaticamente na pós-edição da transcrição."
+        "Adicione aqui abreviações ou formas de fala que você quer que sejam "
+        "corrigidas automaticamente na transcrição final."
     )
     st.write(
-        "Dica: use a forma como você costuma falar/escrever no áudio em "
-        "`Original` e a forma correta em `Substituir por`."
+        "Exemplo. Original: vc. Substituir por. você. "
+        "Essas correções valem para todas as sessões futuras."
     )
 
-    # Exibe dicionário base + customizado (somente leitura para o base)
-    st.markdown("#### Correções atuais em uso (base + customizadas)")
+    st.markdown("#### Correções em uso (base mais personalizadas)")
     dicionario_atual = get_correcoes_dicionario()
     if dicionario_atual:
         orig = []
@@ -399,15 +414,17 @@ with tab_biblioteca:
         for k, v in dicionario_atual.items():
             orig.append(k.strip())
             novo.append(v.strip())
-        st.table({"Original": orig, "Substituir por": novo})
+        import pandas as pd
+
+        st.table(pd.DataFrame({"Original": orig, "Substituir por": novo}))
     else:
-        st.info("Nenhuma correção cadastrada.")
+        st.info("Nenhuma correção cadastrada ainda.")
 
     st.markdown("#### Adicionar nova correção personalizada")
     with st.form("form_add_correcao"):
         col1, col2 = st.columns(2)
         with col1:
-            original = st.text_input("Original (palavra/expressão)")
+            original = st.text_input("Original. palavra ou expressão")
         with col2:
             substituir = st.text_input("Substituir por")
 
@@ -419,6 +436,15 @@ with tab_biblioteca:
                 chave = f" {original.strip()} "
                 valor = f" {substituir.strip()} "
                 st.session_state["correcoes_custom"][chave] = valor
+
+                salvar_correcoes_custom(st.session_state["correcoes_custom"])
+
                 st.success(
-                    f"Correção adicionada: '{original.strip()}' → '{substituir.strip()}'"
+                    f"Correção adicionada. '{original.strip()}' será trocado por "
+                    f"'{substituir.strip()}' nas próximas transcrições."
                 )
+
+    if st.button("🧹 Limpar apenas correções personalizadas"):
+        st.session_state["correcoes_custom"] = {}
+        salvar_correcoes_custom(st.session_state["correcoes_custom"])
+        st.success("Correções personalizadas limpas. As correções base continuam ativas.")
