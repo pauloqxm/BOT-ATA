@@ -22,33 +22,32 @@ except RuntimeError:
 os.environ["OMP_NUM_THREADS"] = str(num_threads)
 
 import librosa
-import soundfile as sf
+import soundfile as sf  # ainda pode ser útil depois
 import streamlit as st
 
 # Whisper oficial (CPU/GPU NVIDIA)
 import whisper
 
-# Tentativa de OpenVINO
-try:
-    from optimum.intel.openvino import OVModelForCTC
-    from transformers import AutoProcessor
-    OPENVINO_OK = True
-except ImportError:
-    OPENVINO_OK = False
-
 # =============================
 # Config Streamlit
 # =============================
 st.set_page_config(
-    page_title="Transcrição ATA – Whisper / OpenVINO",
+    page_title="Transcrição ATA – Whisper oficial",
     layout="wide",
 )
 
-st.title("📝 Transcrição de Ata – Whisper + OpenVINO (Intel)")
+st.title("📝 Transcrição de Ata – Whisper oficial")
 st.caption(
-    "Tenta usar OpenVINO (NPU/GPU Intel) quando disponível. "
-    "Se der erro, volta automaticamente para Whisper espremendo a CPU."
+    "Usa exclusivamente o Whisper oficial da OpenAI. "
+    "Você escolhe o modelo e ele será mantido, mesmo que fique mais lento na CPU."
 )
+
+# =============================
+# Estado da biblioteca de correções
+# =============================
+if "correcoes_custom" not in st.session_state:
+    st.session_state["correcoes_custom"] = {}
+
 
 # =============================
 # Utilitários gerais
@@ -60,11 +59,9 @@ BASE_PROMPT = (
 )
 
 
-def pos_processar_texto(texto: str) -> str:
-    if not texto:
-        return ""
-
-    correcoes = {
+def get_correcoes_dicionario():
+    """Dicionário base + dicionário customizado vindo da aba Biblioteca."""
+    correcoes_base = {
         " pq ": " porque ",
         " tb ": " também ",
         " vc ": " você ",
@@ -86,6 +83,19 @@ def pos_processar_texto(texto: str) -> str:
         " qd ": " quando ",
         " qq ": " qualquer ",
     }
+    # customizadas pelo usuário, salvas com espaços de margem
+    correcoes_custom = st.session_state.get("correcoes_custom", {})
+    correcoes = {}
+    correcoes.update(correcoes_base)
+    correcoes.update(correcoes_custom)
+    return correcoes
+
+
+def pos_processar_texto(texto: str) -> str:
+    if not texto:
+        return ""
+
+    correcoes = get_correcoes_dicionario()
 
     texto = " " + texto + " "
     for errado, correto in correcoes.items():
@@ -139,37 +149,37 @@ def transcrever_com_whisper(audio, sr, modelo_nome: str, chunk_seg: int):
     else:
         device = "cpu"
         fp16 = False
-        device_msg = "GPU NVIDIA não detectada. Usando CPU (Intel/AMD)."
+        device_msg = "GPU NVIDIA não detectada. Usando CPU (pode ficar mais lento)."
 
     st.info(device_msg)
 
     duracao_min = len(audio) / sr / 60
-    modelo_efetivo = modelo_nome
-    if device == "cpu" and duracao_min > 20 and modelo_nome in ("small", "medium", "large-v3"):
-        st.warning(
-            f"Áudio com {duracao_min:.1f} min e modelo '{modelo_nome}' em CPU "
-            f"pode ficar muito lento. Usando 'base'."
-        )
-        modelo_efetivo = "base"
-
-    st.write(f"🎯 Whisper: modelo efetivo `{modelo_efetivo}` em `{device}`")
+    modelo_efetivo = modelo_nome  # mantém exatamente o modelo escolhido
+    st.write(f"🎯 Whisper: modelo `{modelo_efetivo}` em `{device}`")
 
     with st.spinner(f"Carregando modelo Whisper {modelo_efetivo}..."):
         model = carregar_modelo_whisper(modelo_efetivo, device)
 
     partes = dividir_em_chunks(audio, sr, chunk_seg)
     total_partes = len(partes)
-    st.write(f"📦 Partes (Whisper): **{total_partes}**")
+    st.write(f"📦 Partes processadas: **{total_partes}**")
 
+    # barra de progresso geral (conteúdo) e na sidebar
     progresso = st.progress(0)
+    progresso_sidebar = st.sidebar.progress(0)
+
     texto_final = ""
     timestamps = []
+    tempos_partes = []
     inicio_geral = time.time()
 
     for idx, (parte, t_ini, t_fim) in enumerate(partes, start=1):
         janela_min = t_ini / 60
         janela_max = t_fim / 60
-        st.write(f"📝 Whisper – Parte {idx}/{total_partes} – {janela_min:.1f}–{janela_max:.1f} min")
+        st.write(
+            f"📝 Parte {idx}/{total_partes} "
+            f"({janela_min:.1f}–{janela_max:.1f} min do áudio)"
+        )
 
         inicio_parte = time.time()
         result = model.transcribe(
@@ -182,6 +192,7 @@ def transcrever_com_whisper(audio, sr, modelo_nome: str, chunk_seg: int):
             fp16=fp16,
         )
         tempo_parte = time.time() - inicio_parte
+        tempos_partes.append(tempo_parte)
 
         segs = result.get("segments", [])
         if segs:
@@ -198,115 +209,16 @@ def transcrever_com_whisper(audio, sr, modelo_nome: str, chunk_seg: int):
             st.warning("⚠️ Nenhum texto detectado nesta parte.")
 
         progresso.progress(idx / total_partes)
+        progresso_sidebar.progress(idx / total_partes)
 
     tempo_total = time.time() - inicio_geral
-    return texto_final, timestamps, tempo_total, duracao_min
+    return texto_final, timestamps, tempo_total, duracao_min, total_partes, tempos_partes
 
 
 # =============================
-# Backend OPENVINO (NPU / GPU / CPU via AUTO)
+# Sidebar – configurações
 # =============================
-OV_MODEL_ID = "jonatasgrosman/wav2vec2-large-xlsr-53-portuguese"
-
-
-@st.cache_resource(show_spinner=True)
-def carregar_modelo_openvino():
-    """
-    Carrega modelo CTC em OpenVINO.
-    Usa AUTO: tenta GPU/NPU/CPU automatizado.
-    """
-    processor = AutoProcessor.from_pretrained(OV_MODEL_ID)
-    ov_model = OVModelForCTC.from_pretrained(
-        OV_MODEL_ID,
-        export=True,
-        device="AUTO",  # AUTO tenta GPU/NPU/CPU
-    )
-    return processor, ov_model
-
-
-def transcrever_com_openvino(audio, sr, chunk_seg: int):
-    """
-    Tenta usar OpenVINO. Se der erro (pyctcdecode, encoding etc),
-    devolve texto=None para o chamador poder fazer fallback pro Whisper.
-    """
-    duracao_min = len(audio) / sr / 60
-
-    if not OPENVINO_OK:
-        st.error("OpenVINO / optimum-intel não instalados. Use o backend Whisper.")
-        return None, None, 0.0, duracao_min
-
-    st.info("OpenVINO ativado. Device='AUTO' (tenta GPU/NPU/CPU Intel).")
-
-    # Tentativa protegida de carregar modelo/processador
-    try:
-        processor, ov_model = carregar_modelo_openvino()
-    except Exception as e:
-        st.error(
-            "Falha ao inicializar o modelo OpenVINO "
-            "(provável problema de encoding/pyctcdecode no Windows)."
-        )
-        st.text(str(e))
-        st.warning("Voltando automaticamente para o backend Whisper.")
-        return None, None, 0.0, duracao_min
-
-    # Se chegou aqui, modelo carregou OK
-    partes = dividir_em_chunks(audio, sr, chunk_seg)
-    total_partes = len(partes)
-    st.write(f"📦 Partes (OpenVINO): **{total_partes}**")
-
-    progresso = st.progress(0)
-    texto_final = ""
-    timestamps = []
-    inicio_geral = time.time()
-
-    for idx, (parte, t_ini, t_fim) in enumerate(partes, start=1):
-        janela_min = t_ini / 60
-        janela_max = t_fim / 60
-        st.write(f"📝 OpenVINO – Parte {idx}/{total_partes} – {janela_min:.1f}–{janela_max:.1f} min")
-
-        # garantir float32 numpy
-        parte_np = parte.astype("float32")
-
-        inputs = processor(
-            parte_np,
-            sampling_rate=sr,
-            return_tensors="pt",
-            padding="longest",
-        )
-
-        with torch.no_grad():
-            outputs = ov_model(**inputs)
-            logits = outputs.logits
-
-        pred_ids = torch.argmax(logits, dim=-1)
-        text = processor.batch_decode(pred_ids)[0]
-
-        texto_final += text + " "
-        timestamps.append(
-            {"start": float(t_ini), "end": float(t_fim), "text": text}
-        )
-
-        st.write(f"✅ Parte {idx} concluída.")
-        st.write(f"Prévia: _{text[:120]}..._")
-
-        progresso.progress(idx / total_partes)
-
-    tempo_total = time.time() - inicio_geral
-    return texto_final, timestamps, tempo_total, duracao_min
-
-
-# =============================
-# Sidebar – escolha de backend
-# =============================
-st.sidebar.header("Backend de processamento")
-
-backend_options = ["Whisper (oficial)", "OpenVINO (experimental)"]
-backend = st.sidebar.radio(
-    "Motor de transcrição",
-    backend_options,
-    index=0,
-    help="OpenVINO tenta usar NPU/GPU Intel via device=AUTO. Se der erro, cai para Whisper.",
-)
+st.sidebar.header("Configurações de processamento")
 
 chunk_segundos = st.sidebar.slider(
     "Duração de cada parte (segundos)",
@@ -325,112 +237,188 @@ modelos = {
     "large-v3 – máxima precisão (muito pesado)": "large-v3",
 }
 modelo_label = st.sidebar.selectbox(
-    "Modelo Whisper (usado quando backend = Whisper)",
+    "Modelo Whisper",
     list(modelos.keys()),
     index=1,
 )
 modelo_whisper = modelos[modelo_label]
 
-if backend == "OpenVINO (experimental)" and not OPENVINO_OK:
-    st.sidebar.error("OpenVINO / optimum-intel não instalados. Este backend não estará disponível.")
-
 
 # =============================
-# Upload de áudio
+# Abas principais
 # =============================
-audio_file = st.file_uploader(
-    "Envie o arquivo de áudio da sessão/ata",
-    type=["mp3", "wav", "m4a", "ogg", "flac", "aac", "wma"],
+tab_transcricao, tab_biblioteca = st.tabs(
+    ["🎧 Transcrição", "🧩 Biblioteca de correções"]
 )
 
-if audio_file is not None:
-    st.success(f"Arquivo carregado: {audio_file.name}")
-    st.write(f"Tamanho aproximado: {audio_file.size / 1024 / 1024:.2f} MB")
-
-
 # =============================
-# Botão principal
+# Aba 1 – Transcrição
 # =============================
-if st.button("🚀 Transcrever agora", disabled=(audio_file is None)):
-    if audio_file is None:
-        st.warning("Envie um arquivo de áudio primeiro.")
+with tab_transcricao:
+    # Upload de áudio
+    audio_file = st.file_uploader(
+        "Envie o arquivo de áudio da sessão/ata",
+        type=["mp3", "wav", "m4a", "ogg", "flac", "aac", "wma"],
+    )
+
+    if audio_file is not None:
+        st.success(f"Arquivo carregado. Nome: {audio_file.name}")
+        tamanho_mb = audio_file.size / 1024 / 1024
+        st.write(f"Tamanho aproximado: {tamanho_mb:.2f} MB")
     else:
-        with tempfile.NamedTemporaryFile(delete=False, suffix=audio_file.name) as tmp:
-            tmp.write(audio_file.read())
-            caminho_audio = tmp.name
+        tamanho_mb = 0.0
 
-        try:
-            # Pré-processar áudio
-            with st.spinner("🔧 Pré-processando áudio..."):
-                audio, sr_original = librosa.load(caminho_audio, sr=None, mono=True)
+    # Botão principal
+    if st.button("🚀 Transcrever agora", disabled=(audio_file is None)):
+        if audio_file is None:
+            st.warning("Envie um arquivo de áudio primeiro.")
+        else:
+            with tempfile.NamedTemporaryFile(delete=False, suffix=audio_file.name) as tmp:
+                tmp.write(audio_file.read())
+                caminho_audio = tmp.name
 
-                max_abs = max(1e-8, float(abs(audio).max()))
-                audio = audio / max_abs * 0.9
+            try:
+                # Pré-processar áudio
+                with st.spinner("🔧 Pré-processando áudio..."):
+                    audio, sr_original = librosa.load(caminho_audio, sr=None, mono=True)
 
-                if sr_original != 16000:
-                    audio = librosa.resample(audio, orig_sr=sr_original, target_sr=16000)
-                    sr = 16000
-                else:
-                    sr = sr_original
+                    max_abs = max(1e-8, float(abs(audio).max()))
+                    audio = audio / max_abs * 0.9
 
-            # Escolher backend
-            if backend == "OpenVINO (experimental)" and OPENVINO_OK:
-                # tenta OpenVINO
-                texto, ts, tempo_proc, duracao_min = transcrever_com_openvino(
-                    audio, sr, chunk_segundos
-                )
+                    if sr_original != 16000:
+                        audio = librosa.resample(
+                            audio, orig_sr=sr_original, target_sr=16000
+                        )
+                        sr = 16000
+                    else:
+                        sr = sr_original
 
-                # se deu ruim (texto=None), faz fallback automático pro Whisper
-                if texto is None:
-                    st.info("Usando backend Whisper como fallback.")
-                    texto, ts, tempo_proc, duracao_min = transcrever_com_whisper(
-                        audio, sr, modelo_whisper, chunk_segundos
-                    )
-            else:
-                if backend == "OpenVINO (experimental)" and not OPENVINO_OK:
-                    st.warning("OpenVINO não disponível. Usando Whisper.")
-                texto, ts, tempo_proc, duracao_min = transcrever_com_whisper(
+                    duracao_min_pre = len(audio) / sr / 60
+                    partes_preview = dividir_em_chunks(audio, sr, chunk_segundos)
+                    total_partes_preview = len(partes_preview)
+
+                # KPIs iniciais ao ler/preparar o arquivo
+                st.markdown("### 📊 Visão geral do arquivo")
+                col_a, col_b, col_c = st.columns(3)
+                col_a.metric("Duração do áudio", f"{duracao_min_pre:.1f} min")
+                col_b.metric("Tamanho do arquivo", f"{tamanho_mb:.2f} MB")
+                col_c.metric("Quantidade de partes", f"{total_partes_preview}")
+
+                # Transcrição com Whisper oficial
+                (
+                    texto,
+                    ts,
+                    tempo_proc,
+                    duracao_min,
+                    total_partes,
+                    tempos_partes,
+                ) = transcrever_com_whisper(
                     audio, sr, modelo_whisper, chunk_segundos
                 )
 
-            texto = pos_processar_texto(texto)
+                texto = pos_processar_texto(texto)
 
-            if not texto.strip():
-                st.error("Nenhum texto final gerado. Verifique se o áudio tem fala clara.")
+                if not texto.strip():
+                    st.error(
+                        "Nenhum texto final gerado. Verifique se o áudio tem fala clara."
+                    )
+                else:
+                    st.success("🎉 Transcrição concluída com sucesso.")
+
+                    # KPIs pós-processamento
+                    st.markdown("### 📈 Indicadores de processamento")
+                    col1, col2 = st.columns(2)
+                    col1.metric("Duração do áudio", f"{duracao_min:.1f} min")
+                    col2.metric("Tempo total de processamento", f"{tempo_proc:.1f} s")
+
+                    # Barras de desempenho por parte (gráfico de barras)
+                    if tempos_partes:
+                        st.markdown("### 📊 Desempenho por parte")
+                        dados_barra = {
+                            "Parte": list(range(1, total_partes + 1)),
+                            "Tempo (s)": tempos_partes,
+                        }
+                        st.bar_chart(dados_barra, x="Parte", y="Tempo (s)")
+
+                    # Texto final – apenas 400 caracteres na interface
+                    st.subheader("🧾 Texto da Ata (prévia – 400 caracteres)")
+                    preview = texto[:400]
+                    if len(texto) > 400:
+                        preview += "..."
+                    st.write(preview)
+
+                    # Timestamps completos
+                    st.subheader("⏱️ Timestamps")
+                    texto_ts = formatar_timestamps(ts)
+                    st.text(texto_ts)
+
+                    # Downloads – texto completo
+                    nome_base = os.path.splitext(audio_file.name)[0]
+                    st.download_button(
+                        "📥 Baixar transcrição completa (.txt)",
+                        data=texto,
+                        file_name=f"TRANSCRICAO_{nome_base}.txt",
+                        mime="text/plain",
+                    )
+                    st.download_button(
+                        "📥 Baixar timestamps (.txt)",
+                        data=texto_ts,
+                        file_name=f"TIMESTAMPS_{nome_base}.txt",
+                        mime="text/plain",
+                    )
+
+            finally:
+                try:
+                    os.unlink(caminho_audio)
+                except Exception:
+                    pass
+    else:
+        st.info("Envie o áudio e clique em '🚀 Transcrever agora'.")
+
+
+# =============================
+# Aba 2 – Biblioteca de correções
+# =============================
+with tab_biblioteca:
+    st.markdown("### 🧩 Palavras e expressões para correção automática")
+    st.write(
+        "Aqui você pode adicionar palavras ou abreviações que serão trocadas "
+        "automaticamente na pós-edição da transcrição."
+    )
+    st.write(
+        "Dica: use a forma como você costuma falar/escrever no áudio em "
+        "`Original` e a forma correta em `Substituir por`."
+    )
+
+    # Exibe dicionário base + customizado (somente leitura para o base)
+    st.markdown("#### Correções atuais em uso (base + customizadas)")
+    dicionario_atual = get_correcoes_dicionario()
+    if dicionario_atual:
+        orig = []
+        novo = []
+        for k, v in dicionario_atual.items():
+            orig.append(k.strip())
+            novo.append(v.strip())
+        st.table({"Original": orig, "Substituir por": novo})
+    else:
+        st.info("Nenhuma correção cadastrada.")
+
+    st.markdown("#### Adicionar nova correção personalizada")
+    with st.form("form_add_correcao"):
+        col1, col2 = st.columns(2)
+        with col1:
+            original = st.text_input("Original (palavra/expressão)")
+        with col2:
+            substituir = st.text_input("Substituir por")
+
+        submitted = st.form_submit_button("Adicionar correção")
+        if submitted:
+            if not original.strip() or not substituir.strip():
+                st.error("Preencha os dois campos antes de adicionar.")
             else:
-                st.success("🎉 Transcrição concluída com sucesso!")
-
-                col1, col2 = st.columns(2)
-                with col1:
-                    st.metric("Duração do áudio", f"{duracao_min:.1f} min")
-                with col2:
-                    st.metric("Tempo de processamento", f"{tempo_proc:.1f} s")
-
-                st.subheader("🧾 Texto da Ata (Transcrição)")
-                st.write(texto)
-
-                st.subheader("⏱️ Timestamps")
-                texto_ts = formatar_timestamps(ts)
-                st.text(texto_ts)
-
-                nome_base = os.path.splitext(audio_file.name)[0]
-                st.download_button(
-                    "📥 Baixar transcrição (.txt)",
-                    data=texto,
-                    file_name=f"TRANSCRICAO_{nome_base}.txt",
-                    mime="text/plain",
+                chave = f" {original.strip()} "
+                valor = f" {substituir.strip()} "
+                st.session_state["correcoes_custom"][chave] = valor
+                st.success(
+                    f"Correção adicionada: '{original.strip()}' → '{substituir.strip()}'"
                 )
-                st.download_button(
-                    "📥 Baixar timestamps (.txt)",
-                    data=texto_ts,
-                    file_name=f"TIMESTAMPS_{nome_base}.txt",
-                    mime="text/plain",
-                )
-
-        finally:
-            try:
-                os.unlink(caminho_audio)
-            except Exception:
-                pass
-else:
-    st.info("Envie o áudio e clique em '🚀 Transcrever agora'.")
