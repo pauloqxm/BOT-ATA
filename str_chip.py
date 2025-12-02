@@ -1198,15 +1198,17 @@ with tab3:
         </div>
         """, unsafe_allow_html=True)
     else:
-        # Inicializa estados do editor a partir da transcrição, se ainda estiverem vazios
-        if not st.session_state["texto_editado"]:
+        # Garante estado inicial seguro
+        if "texto_editado" not in st.session_state:
             st.session_state["texto_editado"] = texto_disponivel
         
-        if not st.session_state["text_editor_area"]:
+        if "text_editor_area" not in st.session_state:
+            st.session_state["text_editor_area"] = st.session_state["texto_editado"]
+        elif not st.session_state["text_editor_area"]:
+            # se estiver vazio, puxa o texto editado
             st.session_state["text_editor_area"] = st.session_state["texto_editado"]
         
         texto_original = texto_disponivel
-        texto_editado = st.session_state["text_editor_area"]
         
         # Estatísticas do texto original
         st.markdown("### 📊 Estatísticas do Texto Original")
@@ -1225,7 +1227,7 @@ with tab3:
             paragrafos_orig = len([p for p in texto_original.split('\n\n') if p.strip()])
             st.metric("Parágrafos", paragrafos_orig)
         
-        # Configurações avançadas primeiro (para já termos max_caracteres/aplicar_correcoes)
+        # Configurações avançadas
         with st.expander("⚙️ Configurações Avançadas"):
             col_adv1, col_adv2 = st.columns(2)
             
@@ -1284,7 +1286,7 @@ with tab3:
             )
         
         # Sempre usar o texto ATUAL do editor como base
-        texto_base = st.session_state["text_editor_area"]
+        texto_base = st.session_state.get("text_editor_area", "")
         
         # Aplica as transformações quando os botões são clicados
         if organizar_paragrafos_btn:
@@ -1315,7 +1317,7 @@ with tab3:
             st.success("✅ Texto formatado como ATA!")
             st.rerun()
         
-        # Editor de texto – direita edita, esquerda mostra original
+        # Editor de texto – original x editado
         st.markdown("### ✍️ Editor de Texto")
         
         col_view1, col_view2 = st.columns(2)
@@ -1334,7 +1336,7 @@ with tab3:
             st.markdown("#### 📝 Texto Editado")
             texto_editado_widget = st.text_area(
                 "Edite seu texto:",
-                value=st.session_state["text_editor_area"],
+                value=st.session_state.get("text_editor_area", ""),
                 height=300,
                 label_visibility="collapsed",
                 key="text_editor_area"
@@ -1342,9 +1344,9 @@ with tab3:
             # Sincroniza com texto_editado
             st.session_state["texto_editado"] = texto_editado_widget
         
-        # Estatísticas do texto editado
-        texto_editado = st.session_state["texto_editado"]
+        texto_editado = st.session_state.get("texto_editado", "")
         
+        # Estatísticas do texto editado
         st.markdown("### 📈 Comparação")
         
         col_comp1, col_comp2, col_comp3, col_comp4 = st.columns(4)
