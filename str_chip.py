@@ -5,6 +5,7 @@ import tempfile
 import json
 from pathlib import Path
 from datetime import datetime
+import re  # <<< IMPORTANTE para o regex das correções
 
 os.environ["HF_HUB_DISABLE_SYMLINKS_WARNING"] = "1"
 os.environ["KMP_DUPLICATE_LIB_OK"] = "True"
@@ -349,55 +350,59 @@ BASE_PROMPT = (
 )
 
 def get_correcoes_dicionario():
-    """Dicionário base somado às correções customizadas."""
+    """Dicionário base somado às correções customizadas (sem espaços extras)."""
     correcoes_base = {
-        " pq ": " porque ",
-        " tb ": " também ",
-        " vc ": " você ",
-        " d ": " de ",
-        " q ": " que ",
-        " ta ": " está ",
-        " tava ": " estava ",
-        " pra ": " para ",
-        " ne ": " não é ",
-        " naum ": " não ",
-        " entao ": " então ",
-        " tbm ": " também ",
-        " obg ": " obrigado ",
-        " vlw ": " valeu ",
-        " blz ": " beleza ",
-        " p ": " para ",
-        " cm ": " com ",
-        " td ": " tudo ",
-        " qd ": " quando ",
-        " qq ": " qualquer ",
+        "pq": "porque",
+        "tb": "também",
+        "vc": "você",
+        "d": "de",
+        "q": "que",
+        "ta": "está",
+        "tava": "estava",
+        "pra": "para",
+        "ne": "não é",
+        "naum": "não",
+        "entao": "então",
+        "tbm": "também",
+        "obg": "obrigado",
+        "vlw": "valeu",
+        "blz": "beleza",
+        "cm": "com",
+        "td": "tudo",
+        "qd": "quando",
+        "qq": "qualquer",
     }
-    correcoes_custom = st.session_state.get("correcoes_custom", {})
+    # Normaliza customizadas (remove espaços ao redor)
+    raw_custom = st.session_state.get("correcoes_custom", {})
+    correcoes_custom = {}
+    for k, v in raw_custom.items():
+        key_clean = str(k).strip()
+        val_clean = str(v).strip()
+        if key_clean:
+            correcoes_custom[key_clean] = val_clean
+
     correcoes = {}
     correcoes.update(correcoes_base)
     correcoes.update(correcoes_custom)
     return correcoes
 
 def pos_processar_texto(texto: str) -> str:
-    """Aplica a biblioteca de correções ao texto transcrito."""
+    """Aplica a biblioteca de correções ao texto transcrito (case-insensitive e com borda de palavra)."""
     if not texto:
         return ""
 
     correcoes = get_correcoes_dicionario()
 
-    texto = " " + texto + " "
+    # Normaliza espaços múltiplos
+    texto = re.sub(r"\s+", " ", texto)
+
+    # Aplica cada correção com \b e ignore case
     for errado, correto in correcoes.items():
-        texto = texto.replace(errado, correto)
+        padrao = r"\b{}\b".format(re.escape(errado))
+        texto = re.sub(padrao, correto, texto, flags=re.IGNORECASE)
 
-    while "  " in texto:
-        texto = texto.replace("  ", " ")
-
-    texto = (
-        texto.replace(" .", ".")
-        .replace(" ,", ",")
-        .replace(" ?", "?")
-        .replace(" !", "!")
-    )
+    # Ajusta espaço antes de pontuação
+    texto = re.sub(r"\s+([.,!?])", r"\1", texto)
 
     return texto.strip()
 
@@ -770,6 +775,7 @@ with tab1:
                     audio, sr, modelo_whisper, chunk_segundos
                 )
 
+                # <<< AQUI as correções entram de verdade
                 texto = pos_processar_texto(texto)
 
                 if not texto.strip():
@@ -847,8 +853,10 @@ with tab1:
                             {timestamps_html}
                         </div>
                         """, unsafe_allow_html=True)
-                        texto_ts = "\n".join([f"[{formatar_tempo(t['start'])} - {formatar_tempo(t['end'])}] {t['text'][:400]}" 
-                                            for t in ts])
+                        texto_ts = "\n".join([
+                            f"[{formatar_tempo(t['start'])} - {formatar_tempo(t['end'])}] {t['text'][:400]}" 
+                            for t in ts
+                        ])
                     else:
                         st.info("ℹ️ Nenhum timestamp disponível")
                         texto_ts = ""
@@ -912,13 +920,11 @@ with tab2:
     dicionario_atual = get_correcoes_dicionario()
     
     if dicionario_atual:
-        # Criar DataFrame para visualização
         df_correcoes = pd.DataFrame([
-            {"Original": k.strip(), "Substituir por": v.strip()}
+            {"Original": k, "Substituir por": v}
             for k, v in dicionario_atual.items()
         ])
         
-        # Estilizar a tabela
         st.dataframe(
             df_correcoes,
             use_container_width=True,
@@ -935,7 +941,6 @@ with tab2:
             }
         )
         
-        # Resumo
         st.markdown(f"""
         <div class="info-card">
             <div style="display: flex; align-items: center; justify-content: space-between;">
@@ -1005,11 +1010,12 @@ with tab2:
             if not original.strip() or not substituir.strip():
                 st.error("❌ Preencha ambos os campos antes de adicionar.")
             else:
-                chave = f" {original.strip()} "
-                valor = f" {substituir.strip()} "
+                # Agora salvando SEM espaços extras
+                chave = original.strip()
+                valor = substituir.strip()
                 st.session_state["correcoes_custom"][chave] = valor
                 salvar_correcoes_custom(st.session_state["correcoes_custom"])
-                st.success(f"✅ Correção adicionada: **'{original.strip()}'** → **'{substituir.strip()}'**")
+                st.success(f"✅ Correção adicionada: **'{chave}'** → **'{valor}'**")
                 st.rerun()
         
         if clear_all:
