@@ -1176,13 +1176,13 @@ with tab2:
             st.rerun()
 
 # =============================
-# NOVA ABA 3 – Editor de Texto e Pós-Processamento COM DEEPSEEK
+# NOVA ABA 3 – Editor de Texto e Pós-Processamento
 # =============================
 with tab3:
     st.markdown("""
     <div style="text-align: center; margin-bottom: 2rem;">
-        <h2>✏️ Editor de Texto com IA</h2>
-        <p style="color: #666;">Organize, formate e refine sua transcrição com DeepSeek AI</p>
+        <h2>✏️ Editor de Texto</h2>
+        <p style="color: #666;">Organize, formate e refine sua transcrição</p>
     </div>
     """, unsafe_allow_html=True)
     
@@ -1201,495 +1201,26 @@ with tab3:
         texto_original = texto_disponivel
 
         # =============================
-        # FUNÇÕES PARA API DEEPSEEK (COM SEGURANÇA)
-        # =============================
-        
-        def obter_api_key():
-            """Obtém a API key de forma segura."""
-            # PRIMEIRO: Revogue a chave exposta e gere uma nova!
-            # Chave exposta: sk-9a8fa1edd8cd4226a70cf968c68ee25d
-            
-            # Métodos seguros de obter a chave:
-            try:
-                # 1. Tenta do Streamlit Secrets (RECOMENDADO)
-                if "DEEPSEEK_API_KEY" in st.secrets:
-                    return st.secrets["DEEPSEEK_API_KEY"]
-            except:
-                pass
-            
-            try:
-                # 2. Tenta de variável de ambiente
-                import os
-                if os.environ.get("DEEPSEEK_API_KEY"):
-                    return os.environ.get("DEEPSEEK_API_KEY")
-            except:
-                pass
-            
-            # 3. Retorna None se não encontrar
-            return None
-        
-        def validar_texto_para_api(texto: str, max_caracteres: int = 3000) -> tuple:
-            """Valida e prepara texto para API, retornando (texto_valido, aviso)."""
-            if not texto or not texto.strip():
-                return "", "Texto vazio"
-            
-            # Remove caracteres problemáticos
-            texto_limpo = texto.strip()
-            
-            # Limita tamanho para otimizar tokens
-            if len(texto_limpo) > max_caracteres:
-                aviso = f"Texto truncado para {max_caracteres} caracteres para otimizar tokens"
-                return texto_limpo[:max_caracteres], aviso
-            
-            return texto_limpo, ""
-        
-        def corrigir_ortografia_deepseek(texto: str) -> str:
-            """Corrige ortografia e gramática usando DeepSeek."""
-            import requests
-            import json
-            import time
-            
-            api_key = obter_api_key()
-            if not api_key:
-                st.error("❌ API Key não configurada. Configure em Secrets ou variáveis de ambiente.")
-                return texto
-            
-            # Valida e prepara texto
-            texto_valido, aviso = validar_texto_para_api(texto)
-            if aviso:
-                st.info(f"ℹ️ {aviso}")
-            
-            if not texto_valido:
-                return texto
-            
-            # Configuração da requisição
-            url = "https://api.deepseek.com/v1/chat/completions"
-            headers = {
-                "Authorization": f"Bearer {api_key}",
-                "Content-Type": "application/json"
-            }
-            
-            # Prompt otimizado para correção
-            prompt = f"""Corrija a ortografia e gramática do seguinte texto em português brasileiro:
-
-TEXTO PARA CORRIGIR:
-{texto_valido}
-
-REGRAS:
-1. Corrija TODOS os erros de ortografia
-2. Corrija concordância verbal e nominal
-3. Ajuste pontuação (vírgulas, pontos, etc.)
-4. Mantenha o significado original
-5. Não altere nomes próprios ou termos técnicos
-6. Mantenha a formalidade do texto
-7. Retorne APENAS o texto corrigido, sem explicações
-
-TEXTO CORRIGIDO:"""
-            
-            payload = {
-                "model": "deepseek-chat",
-                "messages": [
-                    {
-                        "role": "system", 
-                        "content": "Você é um corretor ortográfico especializado em português brasileiro."
-                    },
-                    {
-                        "role": "user", 
-                        "content": prompt
-                    }
-                ],
-                "temperature": 0.1,  # Baixa para correções precisas
-                "max_tokens": min(len(texto_valido) + 500, 2000),
-                "top_p": 0.9
-            }
-            
-            try:
-                with st.spinner("🧠 Corrigindo com DeepSeek AI..."):
-                    # Delay para respeitar rate limits
-                    time.sleep(0.5)
-                    
-                    response = requests.post(
-                        url, 
-                        headers=headers, 
-                        json=payload,
-                        timeout=45
-                    )
-                    
-                    if response.status_code == 200:
-                        result = response.json()
-                        texto_corrigido = result["choices"][0]["message"]["content"].strip()
-                        
-                        # Log do uso (opcional)
-                        if "usage" in result:
-                            tokens = result["usage"]["total_tokens"]
-                            st.session_state.setdefault("tokens_usados", 0)
-                            st.session_state["tokens_usados"] += tokens
-                        
-                        return texto_corrigido
-                    else:
-                        error_msg = f"Erro {response.status_code}"
-                        if response.text:
-                            try:
-                                error_data = response.json()
-                                error_msg = error_data.get("error", {}).get("message", error_msg)
-                            except:
-                                error_msg = response.text[:200]
-                        
-                        st.error(f"❌ Erro na API: {error_msg}")
-                        return texto
-            
-            except requests.exceptions.Timeout:
-                st.error("⏰ Timeout na API. Texto muito longo ou servidor lento.")
-                return texto
-            except Exception as e:
-                st.error(f"❌ Erro de conexão: {str(e)}")
-                return texto
-        
-        def melhorar_clareza_deepseek(texto: str) -> str:
-            """Melhora a clareza e fluência do texto."""
-            import requests
-            import json
-            import time
-            
-            api_key = obter_api_key()
-            if not api_key:
-                return texto
-            
-            texto_valido, aviso = validar_texto_para_api(texto, 2500)
-            if aviso:
-                st.info(f"ℹ️ {aviso}")
-            
-            url = "https://api.deepseek.com/v1/chat/completions"
-            headers = {
-                "Authorization": f"Bearer {api_key}",
-                "Content-Type": "application/json"
-            }
-            
-            prompt = f"""Melhore a clareza e fluência deste texto em português brasileiro:
-
-TEXTO ORIGINAL:
-{texto_valido}
-
-INSTRUÇÕES:
-1. Torne as frases mais claras e diretas
-2. Melhore a conexão entre ideias
-3. Use vocabulário mais preciso quando necessário
-4. Mantenha o tom formal apropriado para atas
-5. Não altere fatos ou informações importantes
-6. Organize em parágrafos lógicos quando possível
-7. Retorne APENAS o texto melhorado
-
-TEXTO MELHORADO:"""
-            
-            payload = {
-                "model": "deepseek-chat",
-                "messages": [
-                    {
-                        "role": "system", 
-                        "content": "Você é um especialista em redação clara e objetiva para documentos formais."
-                    },
-                    {
-                        "role": "user", 
-                        "content": prompt
-                    }
-                ],
-                "temperature": 0.3,
-                "max_tokens": min(len(texto_valido) + 800, 3000)
-            }
-            
-            try:
-                with st.spinner("✨ Melhorando clareza com AI..."):
-                    time.sleep(0.5)
-                    response = requests.post(url, headers=headers, json=payload, timeout=60)
-                    
-                    if response.status_code == 200:
-                        result = response.json()
-                        return result["choices"][0]["message"]["content"].strip()
-                    else:
-                        return texto
-            
-            except:
-                return texto
-        
-        def criar_resumo_ata_deepseek(texto: str) -> str:
-            """Cria um resumo estruturado da ata."""
-            import requests
-            import json
-            import time
-            
-            api_key = obter_api_key()
-            if not api_key:
-                return texto
-            
-            texto_valido, aviso = validar_texto_para_api(texto, 3500)
-            if aviso:
-                st.info(f"ℹ️ {aviso}")
-            
-            url = "https://api.deepseek.com/v1/chat/completions"
-            headers = {
-                "Authorization": f"Bearer {api_key}",
-                "Content-Type": "application/json"
-            }
-            
-            prompt = f"""Crie um resumo estruturado desta ata de reunião:
-
-ATA COMPLETA:
-{texto_valido}
-
-FORMATO DO RESUMO:
-1. DATA E HORÁRIO (extraia se mencionado)
-2. PARTICIPANTES (liste se mencionados)
-3. PONTOS PRINCIPAIS DISCUTIDOS (em tópicos)
-4. DECISÕES TOMADAS (lista clara)
-5. AÇÕES DEFINIDAS (com responsáveis se houver)
-6. PRÓXIMOS PASSOS
-7. PRÓXIMA REUNIÃO (se definida)
-
-Se alguma informação não estiver no texto, indique "Não especificado".
-Use formatação com marcadores (*) para melhor legibilidade.
-
-RESUMO ESTRUTURADO:"""
-            
-            payload = {
-                "model": "deepseek-chat",
-                "messages": [
-                    {
-                        "role": "system", 
-                        "content": "Você é um secretário especializado em resumir atas de reunião de forma estruturada."
-                    },
-                    {
-                        "role": "user", 
-                        "content": prompt
-                    }
-                ],
-                "temperature": 0.2,
-                "max_tokens": 1500
-            }
-            
-            try:
-                with st.spinner("📋 Criando resumo estruturado..."):
-                    time.sleep(0.5)
-                    response = requests.post(url, headers=headers, json=payload, timeout=60)
-                    
-                    if response.status_code == 200:
-                        result = response.json()
-                        return result["choices"][0]["message"]["content"].strip()
-                    else:
-                        return texto
-            
-            except:
-                return texto
-        
-        def formatar_ata_formal_deepseek(texto: str) -> str:
-            """Formata o texto como uma ata formal completa."""
-            import requests
-            import json
-            import time
-            
-            api_key = obter_api_key()
-            if not api_key:
-                return texto
-            
-            texto_valido, aviso = validar_texto_para_api(texto, 3000)
-            if aviso:
-                st.info(f"ℹ️ {aviso}")
-            
-            data_atual = datetime.now().strftime("%d de %B de %Y")
-            
-            url = "https://api.deepseek.com/v1/chat/completions"
-            headers = {
-                "Authorization": f"Bearer {api_key}",
-                "Content-Type": "application/json"
-            }
-            
-            prompt = f"""Transforme este texto em uma ata formal completa:
-
-CONTEÚDO DA REUNIÃO:
-{texto_valido}
-
-ESTRUTURA DA ATA FORMAL:
-1. TÍTULO: "ATA DA REUNIÃO"
-2. DATA: {data_atual} (use esta data atual)
-3. HORÁRIO: "Início: [hora] - Término: [hora]" (se não houver, use "Horário não especificado")
-4. LOCAL: "Local não especificado" (a menos que mencionado)
-5. PARTICIPANTES: Liste se mencionados, senão "Participantes não listados"
-6. PAUTA: Resuma os principais tópicos
-7. DISCUSSÃO: Organize o conteúdo em tópicos
-8. DECISÕES: Destaque as decisões tomadas
-9. ENCERRAMENTO: Inclua hora de término e data da próxima reunião se mencionada
-10. ASSINATURAS: Linha para assinaturas
-
-Use linguagem formal, parágrafos bem estruturados e formatação clara.
-Não invente informações que não estão no texto.
-
-ATA FORMAL COMPLETA:"""
-            
-            payload = {
-                "model": "deepseek-chat",
-                "messages": [
-                    {
-                        "role": "system", 
-                        "content": "Você é um redator especializado em atas formais de reunião corporativa."
-                    },
-                    {
-                        "role": "user", 
-                        "content": prompt
-                    }
-                ],
-                "temperature": 0.4,
-                "max_tokens": 3500
-            }
-            
-            try:
-                with st.spinner("🏢 Formatando como ata formal..."):
-                    time.sleep(0.5)
-                    response = requests.post(url, headers=headers, json=payload, timeout=90)
-                    
-                    if response.status_code == 200:
-                        result = response.json()
-                        return result["choices"][0]["message"]["content"].strip()
-                    else:
-                        return texto
-            
-            except:
-                return texto
-
-        # =============================
-        # 1) Configuração da API (com aviso de segurança)
-        # =============================
-        with st.expander("🔐 Configuração da API DeepSeek", expanded=False):
-            
-            st.warning("""
-            **⚠️ ATENÇÃO: SUA API KEY FOI EXPOSTA!**
-            
-            A chave `sk-9a8fa1edd8cd4226a70cf968c68ee25d` foi compartilhada publicamente.
-            
-            **AÇÕES URGENTES:**
-            1. **Revogue imediatamente** esta chave no [DeepSeek Platform](https://platform.deepseek.com/api-keys)
-            2. **Gere uma nova chave** segura
-            3. **Configure no Streamlit Secrets** (recomendado) ou variáveis de ambiente
-            """)
-            
-            # Opções de configuração
-            config_method = st.radio(
-                "Método de configuração:",
-                ["Usar Streamlit Secrets (recomendado)", "Inserir manualmente (apenas para teste)"],
-                horizontal=True
-            )
-            
-            api_key = None
-            
-            if config_method == "Usar Streamlit Secrets (recomendado)":
-                try:
-                    api_key = st.secrets["DEEPSEEK_API_KEY"]
-                    st.success("✅ API Key carregada do Secrets com segurança!")
-                except:
-                    st.error("""
-                    **Secrets não configurado!**
-                    
-                    Para configurar, crie o arquivo `.streamlit/secrets.toml` com:
-                    ```toml
-                    DEEPSEEK_API_KEY = "sua-nova-chave-aqui"
-                    ```
-                    """)
-            
-            else:  # Manual (apenas para teste)
-                api_key_input = st.text_input(
-                    "API Key (não compartilhe!):",
-                    type="password",
-                    help="Cole sua nova API Key aqui (apenas para testes)"
-                )
-                if api_key_input:
-                    api_key = api_key_input
-                    st.warning("⚠️ Modo manual ativado - não recomendado para produção")
-            
-            # Verificador de status da API
-            if api_key:
-                col_status1, col_status2 = st.columns([3, 1])
-                with col_status2:
-                    if st.button("🔍 Testar Conexão", use_container_width=True):
-                        try:
-                            import requests
-                            test_response = requests.get(
-                                "https://api.deepseek.com/v1/models",
-                                headers={"Authorization": f"Bearer {api_key}"},
-                                timeout=10
-                            )
-                            if test_response.status_code == 200:
-                                st.success("✅ Conexão com API OK!")
-                            else:
-                                st.error(f"❌ Erro: {test_response.status_code}")
-                        except:
-                            st.error("❌ Falha na conexão")
-            
-            # Monitor de uso (simples)
-            if "tokens_usados" in st.session_state:
-                tokens = st.session_state["tokens_usados"]
-                percentual = min((tokens / 1000000) * 100, 100)  # 1M tokens free tier
-                
-                st.progress(percentual / 100)
-                st.caption(f"📊 Tokens usados este mês: {tokens:,} / 1,000,000 ({percentual:.1f}%)")
-            
-            # Dicas de otimização
-            with st.expander("💡 Dicas para otimizar tokens"):
-                st.markdown("""
-                **Para economizar tokens gratuitos:**
-                1. **Corrija textos curtos** primeiro antes de textos longos
-                2. **Use "Correção Rápida"** para pequenos ajustes
-                3. **Limite textos** a 3000 caracteres por requisição
-                4. **Cache resultados** para textos repetidos
-                5. **Combine operações** usando "Aplicar Todas"
-                """)
-
-        # =============================
-        # 2) Processa ações pendentes
+        # 1) Processa ações pendentes ANTES de criar widgets
         # =============================
         action = st.session_state.get("editor_action", None)
 
         if action is not None:
+            # Base para as transformações: o que está no editor, se existir, senão o original
             texto_base = st.session_state.get("text_editor_area", texto_original)
+
+            # Pega configs salvas (ou defaults)
             max_caracteres = st.session_state.get("max_caracteres_paragrafos", 500)
             aplicar_correcoes_cfg = st.session_state.get("aplicar_correcoes_editor", True)
-            
+
             novo_texto = texto_base
 
             if action == "organizar":
                 novo_texto = organizar_paragrafos(texto_base, max_caracteres=max_caracteres)
 
             elif action == "corrigir_palavras":
+                # Usa biblioteca de correções (correcoes_custom.json + base)
                 novo_texto = pos_processar_texto(texto_base)
-
-            elif action == "corrigir_deepseek":
-                api_key = obter_api_key()
-                if api_key:
-                    novo_texto = corrigir_ortografia_deepseek(texto_base)
-                else:
-                    st.error("❌ Configure a API Key primeiro")
-                    novo_texto = texto_base
-
-            elif action == "melhorar_clareza":
-                api_key = obter_api_key()
-                if api_key:
-                    novo_texto = melhorar_clareza_deepseek(texto_base)
-                else:
-                    st.error("❌ Configure a API Key primeiro")
-                    novo_texto = texto_base
-
-            elif action == "resumir_ata":
-                api_key = obter_api_key()
-                if api_key:
-                    novo_texto = criar_resumo_ata_deepseek(texto_base)
-                else:
-                    st.error("❌ Configure a API Key primeiro")
-                    novo_texto = texto_base
-
-            elif action == "formatar_formal":
-                api_key = obter_api_key()
-                if api_key:
-                    novo_texto = formatar_ata_formal_deepseek(texto_base)
-                else:
-                    st.error("❌ Configure a API Key primeiro")
-                    novo_texto = texto_base
 
             elif action == "restaurar":
                 novo_texto = texto_original
@@ -1701,31 +1232,28 @@ ATA FORMAL COMPLETA:"""
                 texto_processado = organizar_paragrafos(texto_processado, max_caracteres=max_caracteres)
                 texto_processado = capitalizar_frases(texto_processado)
                 texto_processado = corrigir_pontuacao(texto_processado)
-                
-                # Adiciona DeepSeek se disponível
-                api_key = obter_api_key()
-                if api_key:
-                    texto_processado = corrigir_ortografia_deepseek(texto_processado)
-                
+                texto_processado = formatar_ata(texto_processado)
                 novo_texto = texto_processado
 
             elif action == "limpar":
                 novo_texto = ""
 
+            # Atualiza estado do editor ANTES de criar o widget
             st.session_state["text_editor_area"] = novo_texto
             st.session_state["texto_editado"] = novo_texto
-            st.session_state["editor_action"] = None
+            st.session_state["editor_action"] = None  # limpa ação
 
-        # Inicialização se necessário
+        # Garante valores iniciais se ainda não existem
         if "text_editor_area" not in st.session_state:
             st.session_state["text_editor_area"] = texto_original
+
         if "texto_editado" not in st.session_state:
             st.session_state["texto_editado"] = st.session_state["text_editor_area"]
 
         texto_editado = st.session_state.get("text_editor_area", texto_original)
-        
+
         # =============================
-        # 3) Estatísticas do texto original
+        # 2) Estatísticas do texto original
         # =============================
         st.markdown("### 📊 Estatísticas do Texto Original")
         
@@ -1744,124 +1272,9 @@ ATA FORMAL COMPLETA:"""
             st.metric("Parágrafos", paragrafos_orig)
         
         # =============================
-        # 4) Ferramentas de IA
+        # 3) Configurações avançadas
         # =============================
-        st.markdown("### 🤖 Ferramentas Inteligentes de IA")
-        
-        # Verifica se API está configurada
-        api_configurada = obter_api_key() is not None
-        
-        if not api_configurada:
-            st.warning("""
-            ⚠️ **API DeepSeek não configurada**
-            
-            Para usar as ferramentas de IA:
-            1. **Revogue a chave exposta** e gere uma nova
-            2. **Configure no Secrets** ou insira manualmente abaixo
-            3. **Ative as ferramentas** de IA
-            """)
-        
-        # Primeira linha - Correções avançadas
-        col_ai1, col_ai2 = st.columns(2)
-        
-        with col_ai1:
-            if st.button(
-                "🔍 Correção Avançada (DeepSeek)",
-                use_container_width=True,
-                type="primary",
-                disabled=not api_configurada,
-                help="Correção ortográfica e gramatical avançada" if api_configurada else "Configure a API primeiro",
-                key="btn_corrigir_deepseek"
-            ):
-                st.session_state["editor_action"] = "corrigir_deepseek"
-                st.rerun()
-        
-        with col_ai2:
-            if st.button(
-                "✨ Melhorar Clareza",
-                use_container_width=True,
-                type="secondary",
-                disabled=not api_configurada,
-                help="Torna o texto mais claro e fluente" if api_configurada else "Configure a API primeiro",
-                key="btn_melhorar_clareza"
-            ):
-                st.session_state["editor_action"] = "melhorar_clareza"
-                st.rerun()
-        
-        # Segunda linha - Formatação avançada
-        col_ai3, col_ai4 = st.columns(2)
-        
-        with col_ai3:
-            if st.button(
-                "📋 Resumo Estruturado",
-                use_container_width=True,
-                type="secondary",
-                disabled=not api_configurada,
-                help="Cria resumo em tópicos da ata" if api_configurada else "Configure a API primeiro",
-                key="btn_resumir_ata"
-            ):
-                st.session_state["editor_action"] = "resumir_ata"
-                st.rerun()
-        
-        with col_ai4:
-            if st.button(
-                "🏢 Ata Formal Completa",
-                use_container_width=True,
-                type="secondary",
-                disabled=not api_configurada,
-                help="Formata como ata corporativa formal" if api_configurada else "Configure a API primeiro",
-                key="btn_formatar_formal"
-            ):
-                st.session_state["editor_action"] = "formatar_formal"
-                st.rerun()
-        
-        # =============================
-        # 5) Ferramentas básicas
-        # =============================
-        st.markdown("### ⚙️ Ferramentas Básicas")
-        
-        col_basic1, col_basic2, col_basic3 = st.columns(3)
-        
-        with col_basic1:
-            if st.button(
-                "📝 Organizar Parágrafos",
-                use_container_width=True,
-                type="primary",
-                key="btn_organizar_paragrafos"
-            ):
-                st.session_state["editor_action"] = "organizar"
-                st.rerun()
-        
-        with col_basic2:
-            if st.button(
-                "🔤 Correção Rápida",
-                use_container_width=True,
-                type="secondary",
-                help="Usa dicionário local de correções",
-                key="btn_corrigir_palavras"
-            ):
-                st.session_state["editor_action"] = "corrigir_palavras"
-                st.rerun()
-        
-        with col_basic3:
-            if st.button(
-                "📌 Formatar Básico",
-                use_container_width=True,
-                type="secondary",
-                help="Capitalização e pontuação básica",
-                key="btn_formatar_basico"
-            ):
-                texto_processado = capitalizar_frases(texto_editado)
-                texto_processado = corrigir_pontuacao(texto_processado)
-                st.session_state["text_editor_area"] = texto_processado
-                st.session_state["texto_editado"] = texto_processado
-                st.success("✅ Formatação básica aplicada!")
-                st.rerun()
-        
-        # =============================
-        # 6) Configurações avançadas
-        # =============================
-        with st.expander("⚙️ Configurações Avançadas", expanded=False):
+        with st.expander("⚙️ Configurações Avançadas"):
             col_adv1, col_adv2 = st.columns(2)
             
             with col_adv1:
@@ -1884,7 +1297,35 @@ ATA FORMAL COMPLETA:"""
                 )
         
         # =============================
-        # 7) Editor de texto
+        # 4) Ferramentas de formatação – APENAS 2 BOTÕES
+        # =============================
+        st.markdown("### ⚙️ Ferramentas de Formatação")
+        
+        col_tools1, col_tools2 = st.columns(2)
+        
+        with col_tools1:
+            if st.button(
+                "📝 Organizar Parágrafos",
+                use_container_width=True,
+                type="primary",
+                key="btn_organizar_paragrafos"
+            ):
+                st.session_state["editor_action"] = "organizar"
+                st.rerun()
+        
+        with col_tools2:
+            if st.button(
+                "🔤 Corrigir Palavras (Biblioteca)",
+                use_container_width=True,
+                type="secondary",
+                key="btn_corrigir_palavras"
+            ):
+                # Aqui ele vai aplicar pos_processar_texto usando correcoes_custom.json + base
+                st.session_state["editor_action"] = "corrigir_palavras"
+                st.rerun()
+        
+        # =============================
+        # 5) Editor de texto – original x editado
         # =============================
         st.markdown("### ✍️ Editor de Texto")
         
@@ -1892,13 +1333,11 @@ ATA FORMAL COMPLETA:"""
         
         with col_view1:
             st.markdown("#### 📋 Texto Original")
-            preview_original = texto_original[:2000]
-            if len(texto_original) > 2000:
-                preview_original += f"\n\n[... texto truncado ...]\n\nTotal: {len(texto_original):,} caracteres"
-            
             st.markdown(f"""
             <div class="text-editor" style="background: #f8f9fa; border-color: #dee2e6;">
-                {preview_original}
+                {texto_original[:2000]}
+                {f"<br><br><small><i>... texto truncado para visualização ({len(texto_original)} caracteres no total)</i></small>" 
+                if len(texto_original) > 2000 else ""}
             </div>
             """, unsafe_allow_html=True)
         
@@ -1907,7 +1346,7 @@ ATA FORMAL COMPLETA:"""
             texto_editado_widget = st.text_area(
                 "Edite seu texto:",
                 value=st.session_state.get("text_editor_area", texto_original),
-                height=350,
+                height=300,
                 label_visibility="collapsed",
                 key="text_editor_area"
             )
@@ -1916,9 +1355,9 @@ ATA FORMAL COMPLETA:"""
         texto_editado = st.session_state.get("texto_editado", "")
         
         # =============================
-        # 8) Estatísticas comparativas
+        # 6) Estatísticas do texto editado
         # =============================
-        st.markdown("### 📈 Comparação e Análise")
+        st.markdown("### 📈 Comparação")
         
         col_comp1, col_comp2, col_comp3, col_comp4 = st.columns(4)
         
@@ -1961,7 +1400,7 @@ ATA FORMAL COMPLETA:"""
             )
         
         # =============================
-        # 9) Ações gerais
+        # 7) Ações gerais (restaurar, aplicar todas, limpar)
         # =============================
         st.markdown("### 💾 Ações")
         
@@ -1973,7 +1412,7 @@ ATA FORMAL COMPLETA:"""
                 st.rerun()
         
         with col_actions2:
-            if st.button("⚡ Aplicar Todas (Básicas)", use_container_width=True, type="primary", key="btn_aplicar_todas"):
+            if st.button("✨ Aplicar Todas", use_container_width=True, type="primary", key="btn_aplicar_todas"):
                 st.session_state["editor_action"] = "aplicar_todas"
                 st.rerun()
         
@@ -1983,96 +1422,66 @@ ATA FORMAL COMPLETA:"""
                 st.rerun()
         
         # =============================
-        # 10) Download
+        # 8) Download do texto editado
         # =============================
-        st.markdown("### 📥 Download do Texto Editado")
+        st.markdown("### 📥 Download")
         
         if texto_editado:
             nome_base = "transcricao_editada"
             timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
             
-            col_dl1, col_dl2, col_dl3 = st.columns(3)
+            col_dl1, col_dl2 = st.columns(2)
             
             with col_dl1:
                 st.download_button(
-                    "📄 Baixar TXT",
+                    "💾 Baixar Texto Editado",
                     data=texto_editado,
                     file_name=f"{nome_base}_{timestamp}.txt",
                     mime="text/plain",
                     use_container_width=True,
-                    key="download_txt"
+                    key="download_edited_text"
                 )
             
             with col_dl2:
-                # Versão HTML bonita
-                texto_html = f"""<!DOCTYPE html>
-<html>
-<head>
-    <meta charset="UTF-8">
-    <title>Transcrição Editada - {timestamp}</title>
-    <style>
-        body {{ font-family: Arial, sans-serif; line-height: 1.6; max-width: 800px; margin: 0 auto; padding: 30px; background: #f8f9fa; }}
-        .container {{ background: white; padding: 40px; border-radius: 10px; box-shadow: 0 2px 10px rgba(0,0,0,0.1); }}
-        h1 {{ color: #2c3e50; border-bottom: 3px solid #3498db; padding-bottom: 10px; }}
-        .meta {{ background: #ecf0f1; padding: 15px; border-radius: 5px; margin: 20px 0; font-size: 0.9em; color: #7f8c8d; }}
-        .paragraph {{ margin-bottom: 20px; padding: 15px; border-left: 4px solid #2ecc71; background: #f9f9f9; }}
-        .highlight {{ background: #fffacd; padding: 2px 5px; border-radius: 3px; }}
-    </style>
-</head>
-<body>
-    <div class="container">
-        <h1>📝 Transcrição Editada</h1>
-        <div class="meta">
-            <strong>📅 Data:</strong> {datetime.now().strftime("%d/%m/%Y %H:%M")}<br>
-            <strong>📊 Caracteres:</strong> {len(texto_editado):,}<br>
-            <strong>🔤 Palavras:</strong> {len(texto_editado.split()):,}<br>
-            <strong>📋 Parágrafos:</strong> {len([p for p in texto_editado.split('\\n\\n') if p.strip()])}
-        </div>"""
-                
-                # Processa parágrafos
-                for i, paragrafo in enumerate(texto_editado.split('\n\n')):
+                texto_html = f"""
+                <!DOCTYPE html>
+                <html>
+                <head>
+                    <meta charset="UTF-8">
+                    <title>Transcrição Editada - {timestamp}</title>
+                    <style>
+                        body {{ font-family: Arial, sans-serif; line-height: 1.6; max-width: 800px; margin: 0 auto; padding: 20px; }}
+                        .paragraph {{ margin-bottom: 1.5rem; padding: 1rem; border-left: 4px solid #28a745; background: #f8fff9; }}
+                        h1 {{ color: #333; border-bottom: 2px solid #667eea; padding-bottom: 10px; }}
+                        .metadata {{ background: #f8f9fa; padding: 1rem; border-radius: 5px; margin: 1rem 0; }}
+                    </style>
+                </head>
+                <body>
+                    <h1>Transcrição Editada</h1>
+                    <div class="metadata">
+                        <p><strong>Data de geração:</strong> {datetime.now().strftime("%d/%m/%Y %H:%M")}</p>
+                        <p><strong>Caracteres:</strong> {len(texto_editado):,}</p>
+                        <p><strong>Palavras:</strong> {len(texto_editado.split()):,}</p>
+                    </div>
+                    <div>
+                """
+                for paragrafo in texto_editado.split('\n\n'):
                     if paragrafo.strip():
-                        texto_html += f'\n        <div class="paragraph" id="p{i+1}">\n            {paragrafo.strip()}\n        </div>'
+                        texto_html += f'<div class="paragraph">{paragrafo.strip()}</div>\n'
                 
                 texto_html += """
-    </div>
-</body>
-</html>"""
+                    </div>
+                </body>
+                </html>
+                """
                 
                 st.download_button(
-                    "🌐 Baixar HTML",
+                    "🌐 Baixar como HTML",
                     data=texto_html,
                     file_name=f"{nome_base}_{timestamp}.html",
                     mime="text/html",
                     use_container_width=True,
-                    key="download_html"
-                )
-            
-            with col_dl3:
-                # Versão Markdown para compatibilidade
-                texto_md = f"""# Transcrição Editada
-
-**Data de geração:** {datetime.now().strftime("%d/%m/%Y %H:%M")}  
-**Caracteres:** {len(texto_editado):,}  
-**Palavras:** {len(texto_editado.split()):,}  
-**Parágrafos:** {len([p for p in texto_editado.split('\n\n') if p.strip()])}
-
----
-
-{texto_editado}
-
----
-
-*Documento gerado automaticamente por Transcrição Inteligente*
-"""
-                
-                st.download_button(
-                    "📝 Baixar Markdown",
-                    data=texto_md,
-                    file_name=f"{nome_base}_{timestamp}.md",
-                    mime="text/markdown",
-                    use_container_width=True,
-                    key="download_md"
+                    key="download_html_version"
                 )
 # Fechar container principal
 st.markdown('</div>', unsafe_allow_html=True)
