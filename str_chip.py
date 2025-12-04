@@ -6,6 +6,7 @@ import json
 from pathlib import Path
 from datetime import datetime
 import re
+import subprocess  # NOVO: para detectar placa de vídeo via sistema
 
 os.environ["HF_HUB_DISABLE_SYMLINKS_WARNING"] = "1"
 os.environ["KMP_DUPLICATE_LIB_OK"] = "True"
@@ -251,7 +252,7 @@ st.markdown("""
     /* Parágrafos */
     .paragraph {
         margin-bottom: 1.5rem;
-        padding: 1rem;
+            padding: 1rem;
         border-left: 4px solid #28a745;
         background: linear-gradient(135deg, #f8fff9 0%, #f0fdf4 100%);
         border-radius: 8px;
@@ -350,7 +351,7 @@ st.markdown("""
         background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
     }
     
-    /* Botão voltar ao início - NOVA VERSÃO (sem JS) */
+    /* Botão voltar ao início */
     .top-btn-container {
         position: fixed;
         bottom: 20px;
@@ -533,6 +534,7 @@ def corrigir_pontuacao(texto: str) -> str:
     return texto.strip()
 
 def formatar_ata(texto: str) -> str:
+    # Mantida para uso futuro, mas não exposta na UI de pós-processamento
     if not texto:
         return ""
     if not texto.startswith("ATA DA REUNIÃO"):
@@ -568,6 +570,90 @@ def formatar_timestamps(timestamps, max_chars=400):
         fim = formatar_tempo(ts['end'])
         linhas.append(f"<div class='timestamp-item'><b>[{inicio} - {fim}]</b> {texto}</div>")
     return "\n".join(linhas)
+
+# =============================
+# Detecção de NPU / GPU / Placa de vídeo
+# =============================
+def detectar_npu(cpu_name: str):
+    """
+    Detecção simples de NPU baseada no nome do processador.
+    Não é perfeita, mas já indica se é uma linha com NPU dedicada.
+    """
+    if not cpu_name:
+        return False, "Não identificado"
+
+    cpu_lower = cpu_name.lower()
+    tem_npu = False
+    descricao = "Não identificado"
+
+    # Intel Core Ultra (geralmente vem com NPU)
+    if "core ultra" in cpu_lower or "ultra 5" in cpu_lower or "ultra 7" in cpu_lower or "ultra 9" in cpu_lower:
+        tem_npu = True
+        descricao = "Intel NPU (linha Core Ultra)"
+
+    # Qualcomm / ARM com NPU integrada
+    elif "snapdragon" in cpu_lower or "qualcomm" in cpu_lower:
+        tem_npu = True
+        descricao = "NPU integrada (SoC Qualcomm)"
+
+    return tem_npu, descricao
+
+def detectar_gpu_e_placa_video():
+    """
+    Tenta identificar GPU (CUDA) e placas de vídeo via sistema operacional.
+    """
+    gpu_cuda = None
+    placas_video = []
+
+    # GPU CUDA via PyTorch
+    if torch.cuda.is_available():
+        try:
+            gpu_cuda = torch.cuda.get_device_name(0)
+        except Exception:
+            gpu_cuda = "GPU CUDA detectada"
+
+    # Placa de vídeo via WMIC (Windows) ou lspci (Linux)
+    try:
+        if platform.system() == "Windows":
+            creationflags = 0
+            if hasattr(subprocess, "CREATE_NO_WINDOW"):
+                creationflags = subprocess.CREATE_NO_WINDOW
+
+            result = subprocess.run(
+                ["wmic", "path", "win32_VideoController", "get", "Name"],
+                capture_output=True,
+                text=True,
+                creationflags=creationflags
+            )
+            linhas = [
+                l.strip()
+                for l in result.stdout.splitlines()
+                if l.strip() and "Name" not in l
+            ]
+            if linhas:
+                placas_video = linhas
+
+        elif platform.system() == "Linux":
+            try:
+                result = subprocess.run(
+                    ["lspci"],
+                    capture_output=True,
+                    text=True
+                )
+                linhas_gpu = [
+                    l.strip()
+                    for l in result.stdout.splitlines()
+                    if "VGA compatible controller" in l or "3D controller" in l
+                ]
+                if linhas_gpu:
+                    placas_video = linhas_gpu
+            except Exception:
+                pass
+
+    except Exception:
+        pass
+
+    return gpu_cuda, placas_video
 
 # =============================
 # Whisper oficial
@@ -801,17 +887,41 @@ with st.sidebar:
         st.write(f"**Arquitetura:** {platform.machine()}")
         st.write(f"**Python:** {platform.python_version()}")
         st.write(f"**Whisper:** {whisper.__version__ if hasattr(whisper, '__version__') else 'N/A'}")
-        
+
+        # Memória
         mem = psutil.virtual_memory()
         st.write(f"**RAM Usada:** {mem.percent}%")
         st.write(f"**RAM Disponível:** {mem.available / (1024**3):.1f} GB")
-        
-        if torch.cuda.is_available():
-            st.write(f"**GPU:** {torch.cuda.get_device_name(0)}")
-            st.write(f"**VRAM Total:** {torch.cuda.get_device_properties(0).total_memory / (1024**3):.1f} GB")
+
+        # NPU
+        tem_npu, desc_npu = detectar_npu(cpu_info)
+        if tem_npu:
+            st.write(f"**NPU:** {desc_npu}")
+        else:
+            st.write("**NPU:** não detectada")
+
+        # GPU / CUDA e Placa de vídeo
+        gpu_cuda, placas_video = detectar_gpu_e_placa_video()
+
+        if gpu_cuda:
+            st.write(f"**GPU (CUDA):** {gpu_cuda}")
+            try:
+                vram_total = torch.cuda.get_device_properties(0).total_memory / (1024**3)
+                st.write(f"**VRAM Total:** {vram_total:.1f} GB")
+            except Exception:
+                pass
+        else:
+            st.write("**GPU (CUDA):** não detectada")
+
+        if placas_video:
+            st.markdown("**Placa(s) de vídeo detectada(s):**")
+            for nome in placas_video:
+                st.write(f"• {nome}")
+        else:
+            st.write("**Placa de vídeo:** não identificada pelo sistema operacional")
 
 # =============================
-# Abas principais estilizadas - 3 ABAS
+# Abas principais estilizadas - ORDEM AJUSTADA
 # =============================
 tab1, tab2, tab3 = st.tabs([
     "🎧 TRANSCREVER ÁUDIO",
@@ -932,7 +1042,7 @@ with tab1:
                 texto_corrigido = corrigir_pontuacao(capitalizar_frases(texto_pos))
                 texto_paragrafado = organizar_paragrafos(texto_corrigido)
 
-                st.session_state["texto_transcrito"] = texto_corrigido
+                st.session_state["texto_transcrito"] = texto_bruto.strip()
                 st.session_state["texto_paragrafado"] = texto_paragrafado
                 st.session_state["texto_pos_processado"] = texto_paragrafado
 
@@ -1053,41 +1163,50 @@ with tab2:
     st.markdown("""
     <div style="text-align: center; margin-bottom: 2rem;">
         <h2>📝 Pós-processamento do Texto</h2>
-        <p style="color: #666;">Revise, aplique a biblioteca de correções e formate como ATA</p>
+        <p style="color: #666;">À esquerda o texto bruto. À direita o texto corrigido.</p>
     </div>
     """, unsafe_allow_html=True)
 
     if not st.session_state["texto_transcrito"].strip():
         st.info("ℹ️ Ainda não há transcrição disponível. Faça uma transcrição na aba anterior.")
     else:
+        # Inicializar texto corrigido se estiver vazio
         if not st.session_state["texto_pos_processado"].strip():
             st.session_state["texto_pos_processado"] = (
                 st.session_state["texto_paragrafado"] or st.session_state["texto_transcrito"]
             )
 
-        texto_atual = st.text_area(
-            "Texto pós-processado",
-            value=st.session_state["texto_pos_processado"],
-            height=400,
-            key="texto_pos_processado_area"
-        )
+        col_bruto, col_corr = st.columns(2)
 
-        st.session_state["texto_pos_processado"] = texto_atual
+        with col_bruto:
+            st.markdown("#### 🎧 Texto bruto (saída direta do modelo)")
+            st.text_area(
+                "Texto bruto",
+                value=st.session_state["texto_transcrito"],
+                height=400,
+                key="texto_bruto_view",
+                disabled=True
+            )
 
-        bcol1, bcol2, bcol3 = st.columns(3)
+        with col_corr:
+            st.markdown("#### ✨ Texto corrigido / revisado")
+            texto_atual = st.text_area(
+                "Texto corrigido",
+                value=st.session_state["texto_pos_processado"],
+                height=400,
+                key="texto_pos_processado_area"
+            )
+            st.session_state["texto_pos_processado"] = texto_atual
+
+        bcol1, bcol2 = st.columns(2)
         with bcol1:
             aplicar_corr = st.button(
-                "⚙️ Aplicar biblioteca de correções",
+                "⚙️ Aplicar biblioteca de correções no texto corrigido",
                 use_container_width=True
             )
         with bcol2:
-            formatar_ata_btn = st.button(
-                "📄 Formatar como ATA",
-                use_container_width=True
-            )
-        with bcol3:
             limpar_btn = st.button(
-                "🧹 Limpar texto",
+                "🧹 Limpar texto corrigido",
                 use_container_width=True
             )
 
@@ -1096,24 +1215,18 @@ with tab2:
             texto_corr = corrigir_pontuacao(capitalizar_frases(texto_corr))
             texto_corr = organizar_paragrafos(texto_corr)
             st.session_state["texto_pos_processado"] = texto_corr
-            st.success("✅ Biblioteca de correções aplicada e parágrafos reorganizados.")
-            st.experimental_rerun()
-
-        if formatar_ata_btn:
-            texto_ata = formatar_ata(st.session_state["texto_pos_processado"])
-            st.session_state["texto_pos_processado"] = texto_ata
-            st.success("✅ Texto formatado como ATA.")
+            st.success("✅ Biblioteca de correções aplicada ao texto corrigido.")
             st.experimental_rerun()
 
         if limpar_btn:
             st.session_state["texto_pos_processado"] = ""
             st.experimental_rerun()
 
-        st.markdown("### 📥 Download do Texto Pós-processado")
+        st.markdown("### 📥 Download do Texto Corrigido")
         st.download_button(
-            "📄 Baixar texto pós-processado",
+            "📄 Baixar texto corrigido",
             data=st.session_state["texto_pos_processado"],
-            file_name=f"texto_pos_processado_{datetime.now().strftime('%Y%m%d_%H%M%S')}.txt",
+            file_name=f"texto_corrigido_{datetime.now().strftime('%Y%m%d_%H%M%S')}.txt",
             mime="text/plain",
             use_container_width=True,
             key="download_pos_processado"
@@ -1269,7 +1382,7 @@ st.markdown("""
 st.markdown("---")
 st.markdown("""
 <div style="text-align: center; color: #666; padding: 1.5rem;">
-    <p style="font-size: 1.1rem; font-weight: 600;">🎯 Transcrição Inteligente - v4.1</p>
+    <p style="font-size: 1.1rem; font-weight: 600;">🎯 Transcrição Inteligente - v4.2</p>
     <p style="color: #999; font-size: 0.9rem;">
         Whisper OpenAI • Processamento em tempo real • Correções automáticas • Interface moderna
     </p>
