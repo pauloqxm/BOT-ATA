@@ -6,7 +6,7 @@ import json
 from pathlib import Path
 from datetime import datetime
 import re
-import subprocess  # NOVO: para detectar placa de vídeo via sistema
+import subprocess  # para detectar placa de vídeo via Windows
 
 os.environ["HF_HUB_DISABLE_SYMLINKS_WARNING"] = "1"
 os.environ["KMP_DUPLICATE_LIB_OK"] = "True"
@@ -174,11 +174,6 @@ st.markdown("""
         border-left: 5px solid #17a2b8;
     }
     
-    /* Sidebar */
-    .sidebar .sidebar-content {
-        background: linear-gradient(180deg, #ffffff 0%, #f8f9fa 100%);
-    }
-    
     /* Tabs estilizadas */
     .stTabs [data-baseweb="tab-list"] {
         gap: 2rem;
@@ -252,7 +247,7 @@ st.markdown("""
     /* Parágrafos */
     .paragraph {
         margin-bottom: 1.5rem;
-            padding: 1rem;
+        padding: 1rem;
         border-left: 4px solid #28a745;
         background: linear-gradient(135deg, #f8fff9 0%, #f0fdf4 100%);
         border-radius: 8px;
@@ -314,41 +309,6 @@ st.markdown("""
         margin: 0.5rem 0 0 0;
         opacity: 0.9;
         font-size: 1.1rem;
-    }
-    
-    /* Form inputs */
-    .stTextInput > div > div > input {
-        border-radius: 10px;
-        border: 2px solid #e9ecef;
-        padding: 0.75rem;
-        transition: all 0.3s ease;
-    }
-    
-    .stTextInput > div > div > input:focus {
-        border-color: #667eea;
-        box-shadow: 0 0 0 3px rgba(102, 126, 234, 0.2);
-    }
-    
-    /* Download buttons */
-    .download-btn {
-        background: linear-gradient(135deg, #20c997 0%, #12b886 100%) !important;
-        margin: 0.5rem 0;
-    }
-    
-    .download-btn:hover {
-        background: linear-gradient(135deg, #12b886 0%, #0ca678 100%) !important;
-    }
-    
-    /* Toggle buttons */
-    .stCheckbox > div {
-        padding: 0.5rem;
-        border-radius: 10px;
-        background: #f8f9fa;
-    }
-    
-    /* Slider estilizado */
-    .stSlider > div > div > div > div {
-        background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
     }
     
     /* Botão voltar ao início */
@@ -572,12 +532,11 @@ def formatar_timestamps(timestamps, max_chars=400):
     return "\n".join(linhas)
 
 # =============================
-# Detecção de NPU / GPU / Placa de vídeo
+# Detecção de NPU / GPU / Placa de vídeo (Windows)
 # =============================
 def detectar_npu(cpu_name: str):
     """
     Detecção simples de NPU baseada no nome do processador.
-    Não é perfeita, mas já indica se é uma linha com NPU dedicada.
     """
     if not cpu_name:
         return False, "Não identificado"
@@ -586,12 +545,9 @@ def detectar_npu(cpu_name: str):
     tem_npu = False
     descricao = "Não identificado"
 
-    # Intel Core Ultra (geralmente vem com NPU)
     if "core ultra" in cpu_lower or "ultra 5" in cpu_lower or "ultra 7" in cpu_lower or "ultra 9" in cpu_lower:
         tem_npu = True
         descricao = "Intel NPU (linha Core Ultra)"
-
-    # Qualcomm / ARM com NPU integrada
     elif "snapdragon" in cpu_lower or "qualcomm" in cpu_lower:
         tem_npu = True
         descricao = "NPU integrada (SoC Qualcomm)"
@@ -600,30 +556,25 @@ def detectar_npu(cpu_name: str):
 
 def detectar_gpu_e_placa_video():
     """
-    Detecta GPU CUDA e placas de vídeo usando:
-    1. PyTorch CUDA
-    2. WMIC (Windows)
-    3. PowerShell (fallback para Windows)
-    4. lspci (Linux)
+    Detecta GPU CUDA e placas de vídeo no Windows.
     """
-
     gpu_cuda = None
     placas_video = []
 
-    # ---- 1. Tenta detectar GPU CUDA via PyTorch ----
+    # GPU CUDA via PyTorch
     if torch.cuda.is_available():
         try:
             gpu_cuda = torch.cuda.get_device_name(0)
         except Exception:
             gpu_cuda = "GPU CUDA detectada"
 
-    # ---- 2. Detecção via Windows (WMIC) ----
     try:
         if platform.system() == "Windows":
             creationflags = 0
             if hasattr(subprocess, "CREATE_NO_WINDOW"):
                 creationflags = subprocess.CREATE_NO_WINDOW
 
+            # Tenta WMIC
             result = subprocess.run(
                 ["wmic", "path", "win32_VideoController", "get", "Name"],
                 capture_output=True,
@@ -638,7 +589,7 @@ def detectar_gpu_e_placa_video():
             if linhas:
                 placas_video.extend(linhas)
 
-            # ---- 3. Fallback via PowerShell ----
+            # Fallback via PowerShell
             if not placas_video:
                 result_ps = subprocess.run(
                     ["powershell", "-Command", "Get-CimInstance Win32_VideoController | Select-Object -ExpandProperty Name"],
@@ -657,28 +608,131 @@ def detectar_gpu_e_placa_video():
     except Exception:
         pass
 
-    # Garantir mensagem mais amigável
     if not placas_video:
         placas_video = ["Nenhuma placa identificada"]
 
     return gpu_cuda, placas_video
 
 # =============================
-# Whisper oficial
+# ACELERAÇÃO AUTOMÁTICA UNIVERSAL
 # =============================
+def detectar_acelerador():
+    """
+    Detecta automaticamente o melhor acelerador disponível:
+    - CUDA (NVIDIA)
+    - DirectML (AMD e Intel via DirectX)
+    - OpenVINO (Intel CPU, Intel GPU, NPU)
+    - CPU (fallback)
+    """
+
+    # 1. CUDA NVIDIA
+    if torch.cuda.is_available():
+        try:
+            nome_gpu = torch.cuda.get_device_name(0)
+            return {
+                "engine": "cuda",
+                "device": "cuda",
+                "name": nome_gpu,
+                "fp16": True
+            }
+        except Exception:
+            pass
+
+    # 2. DIRECTML (AMD / Intel via DirectX)
+    try:
+        import torch_directml
+        dml_device = torch_directml.device()
+        return {
+            "engine": "directml",
+            "device": dml_device,
+            "name": "DirectML GPU",
+            "fp16": False
+        }
+    except Exception:
+        pass
+
+    # 3. OPENVINO (Intel – GPU / CPU / NPU)
+    try:
+        from openvino.runtime import Core
+        core = Core()
+        dispositivos = core.available_devices
+
+        # ordem de preferência
+        prioridade = ["GPU", "NPU", "CPU"]
+
+        for preferido in prioridade:
+            for disp in dispositivos:
+                if preferido in disp:
+                    return {
+                        "engine": "openvino",
+                        "device": disp,
+                        "name": disp,
+                        "fp16": False
+                    }
+    except Exception:
+        pass
+
+    # 4. CPU (fallback)
+    return {
+        "engine": "cpu",
+        "device": "cpu",
+        "name": "Processamento via CPU",
+        "fp16": False
+    }
+
+@st.cache_resource(show_spinner=True)
+def carregar_whisper_inteligente(modelo_nome, acelerador):
+    """
+    Carrega Whisper automaticamente com base no acelerador detectado.
+    """
+    engine = acelerador["engine"]
+    device = acelerador["device"]
+
+    st.info(f"Acelerador selecionado: **{acelerador['name']}** ({engine})")
+
+    # CUDA / CPU – Whisper PyTorch normal
+    if engine in ("cuda", "cpu"):
+        return whisper.load_model(modelo_nome, device=engine)
+
+    # DirectML
+    if engine == "directml":
+        try:
+            import torch_directml
+            dml_device = device
+            return whisper.load_model(modelo_nome, device=dml_device)
+        except Exception as e:
+            st.warning(f"Falha ao usar DirectML ({e}). Voltando para CPU.")
+            return whisper.load_model(modelo_nome, device="cpu")
+
+    # OpenVINO
+    if engine == "openvino":
+        try:
+            from openvino_whisper import load_model as load_ov
+            return load_ov(modelo_nome, device=device)
+        except Exception as e:
+            st.warning(f"Falha ao usar OpenVINO ({e}). Voltando para CPU.")
+            return whisper.load_model(modelo_nome, device="cpu")
+
+    # Fallback
+    return whisper.load_model(modelo_nome, device="cpu")
+
+# Mantido por compatibilidade, se quiser usar em outro ponto
 @st.cache_resource(show_spinner=True)
 def carregar_modelo_whisper(nome_modelo: str, device: str):
     return whisper.load_model(nome_modelo, device=device)
 
+# =============================
+# Whisper oficial – função principal
+# =============================
 def transcrever_com_whisper(audio, sr, modelo_nome: str, chunk_seg: int):
-    if torch.cuda.is_available():
-        device = "cuda"
-        fp16 = True
-        device_msg = f"🎮 GPU NVIDIA detectada: {torch.cuda.get_device_name(0)}"
-    else:
-        device = "cpu"
-        fp16 = False
-        device_msg = "💻 Usando CPU - Processamento pode ser mais lento"
+    # Detecta o melhor acelerador disponível (CUDA / DirectML / OpenVINO / CPU)
+    acel = detectar_acelerador()
+    device = acel.get("device", "cpu")
+    engine = acel.get("engine", "cpu")
+    fp16 = acel.get("fp16", False)
+    device_name = acel.get("name", str(device))
+
+    device_msg = f"Acelerador detectado: {device_name} ({engine})"
 
     st.markdown(f"""
     <div class="info-card">
@@ -694,13 +748,15 @@ def transcrever_com_whisper(audio, sr, modelo_nome: str, chunk_seg: int):
 
     duracao_min = len(audio) / sr / 60
     modelo_efetivo = modelo_nome
-    
+
+    engine_label = str(engine).upper()
+
     st.markdown(f"""
     <div class="custom-card">
         <div style="display: flex; align-items: center; justify-content: space-between;">
             <div>
                 <h3 style="margin: 0;">🎯 Modelo Selecionado</h3>
-                <p style="margin: 0; color: #666;">{modelo_efetivo.upper()} em {device.upper()}</p>
+                <p style="margin: 0; color: #666;">{modelo_efetivo.upper()} em {engine_label}</p>
             </div>
             <div class="status-processing">
                 PRONTO PARA PROCESSAR
@@ -709,8 +765,9 @@ def transcrever_com_whisper(audio, sr, modelo_nome: str, chunk_seg: int):
     </div>
     """, unsafe_allow_html=True)
 
+    # Carrega o modelo de acordo com o acelerador detectado
     with st.spinner(f"🔧 Carregando modelo Whisper {modelo_efetivo}..."):
-        model = carregar_modelo_whisper(modelo_efetivo, device)
+        model = carregar_whisper_inteligente(modelo_efetivo, acel)
 
     partes = dividir_em_chunks(audio, sr, chunk_seg)
     total_partes = len(partes)
@@ -770,15 +827,21 @@ def transcrever_com_whisper(audio, sr, modelo_nome: str, chunk_seg: int):
         """, unsafe_allow_html=True)
 
         inicio_parte = time.time()
-        result = model.transcribe(
-            parte,
+
+        # Monta kwargs da transcrição de forma segura para cada engine
+        transcribe_kwargs = dict(
             language="pt",
             task="transcribe",
             temperature=[0.0, 0.2],
             best_of=5,
             initial_prompt=BASE_PROMPT,
-            fp16=fp16,
         )
+        # fp16 só faz sentido em CUDA/CPU (PyTorch)
+        if engine in ("cuda", "cpu"):
+            transcribe_kwargs["fp16"] = fp16
+
+        result = model.transcribe(parte, **transcribe_kwargs)
+
         tempo_parte = time.time() - inicio_parte
         tempos_partes.append(tempo_parte)
 
@@ -896,19 +959,16 @@ with st.sidebar:
         st.write(f"**Python:** {platform.python_version()}")
         st.write(f"**Whisper:** {whisper.__version__ if hasattr(whisper, '__version__') else 'N/A'}")
 
-        # Memória
         mem = psutil.virtual_memory()
         st.write(f"**RAM Usada:** {mem.percent}%")
         st.write(f"**RAM Disponível:** {mem.available / (1024**3):.1f} GB")
 
-        # NPU
         tem_npu, desc_npu = detectar_npu(cpu_info)
         if tem_npu:
             st.write(f"**NPU:** {desc_npu}")
         else:
             st.write("**NPU:** não detectada")
 
-        # GPU / CUDA e Placa de vídeo
         gpu_cuda, placas_video = detectar_gpu_e_placa_video()
 
         if gpu_cuda:
@@ -921,20 +981,18 @@ with st.sidebar:
         else:
             st.write("**GPU (CUDA):** não detectada")
 
-        if placas_video:
-            st.markdown("**Placa(s) de vídeo detectada(s):**")
-            for nome in placas_video:
-                st.write(f"• {nome}")
-        else:
-            st.write("**Placa de vídeo:** não identificada pelo sistema operacional")
+        st.markdown("**Placa(s) de vídeo detectada(s):**")
+        for nome in placas_video:
+            st.write(f"• {nome}")
 
 # =============================
-# Abas principais estilizadas - ORDEM AJUSTADA
+# Abas principais estilizadas
+# ORDEM: Transcrever • Biblioteca • Pós-processamento
 # =============================
 tab1, tab2, tab3 = st.tabs([
     "🎧 TRANSCREVER ÁUDIO",
-    "📝 PÓS-PROCESSAMENTO",
-    "📚 BIBLIOTECA DE CORREÇÕES"
+    "📚 BIBLIOTECA DE CORREÇÕES",
+    "📝 PÓS-PROCESSAMENTO"
 ])
 
 # =============================
@@ -1165,85 +1223,9 @@ with tab1:
                     pass
 
 # =============================
-# Aba 2 – Pós-processamento
+# Aba 2 – Biblioteca de correções (meio)
 # =============================
 with tab2:
-    st.markdown("""
-    <div style="text-align: center; margin-bottom: 2rem;">
-        <h2>📝 Pós-processamento do Texto</h2>
-        <p style="color: #666;">À esquerda o texto bruto. À direita o texto corrigido.</p>
-    </div>
-    """, unsafe_allow_html=True)
-
-    if not st.session_state["texto_transcrito"].strip():
-        st.info("ℹ️ Ainda não há transcrição disponível. Faça uma transcrição na aba anterior.")
-    else:
-        # Inicializar texto corrigido se estiver vazio
-        if not st.session_state["texto_pos_processado"].strip():
-            st.session_state["texto_pos_processado"] = (
-                st.session_state["texto_paragrafado"] or st.session_state["texto_transcrito"]
-            )
-
-        col_bruto, col_corr = st.columns(2)
-
-        with col_bruto:
-            st.markdown("#### 🎧 Texto bruto (saída direta do modelo)")
-            st.text_area(
-                "Texto bruto",
-                value=st.session_state["texto_transcrito"],
-                height=400,
-                key="texto_bruto_view",
-                disabled=True
-            )
-
-        with col_corr:
-            st.markdown("#### ✨ Texto corrigido / revisado")
-            texto_atual = st.text_area(
-                "Texto corrigido",
-                value=st.session_state["texto_pos_processado"],
-                height=400,
-                key="texto_pos_processado_area"
-            )
-            st.session_state["texto_pos_processado"] = texto_atual
-
-        bcol1, bcol2 = st.columns(2)
-        with bcol1:
-            aplicar_corr = st.button(
-                "⚙️ Aplicar biblioteca de correções no texto corrigido",
-                use_container_width=True
-            )
-        with bcol2:
-            limpar_btn = st.button(
-                "🧹 Limpar texto corrigido",
-                use_container_width=True
-            )
-
-        if aplicar_corr:
-            texto_corr = pos_processar_texto(st.session_state["texto_pos_processado"])
-            texto_corr = corrigir_pontuacao(capitalizar_frases(texto_corr))
-            texto_corr = organizar_paragrafos(texto_corr)
-            st.session_state["texto_pos_processado"] = texto_corr
-            st.success("✅ Biblioteca de correções aplicada ao texto corrigido.")
-            st.experimental_rerun()
-
-        if limpar_btn:
-            st.session_state["texto_pos_processado"] = ""
-            st.experimental_rerun()
-
-        st.markdown("### 📥 Download do Texto Corrigido")
-        st.download_button(
-            "📄 Baixar texto corrigido",
-            data=st.session_state["texto_pos_processado"],
-            file_name=f"texto_corrigido_{datetime.now().strftime('%Y%m%d_%H%M%S')}.txt",
-            mime="text/plain",
-            use_container_width=True,
-            key="download_pos_processado"
-        )
-
-# =============================
-# Aba 3 – Biblioteca de correções
-# =============================
-with tab3:
     st.markdown("""
     <div style="text-align: center; margin-bottom: 2rem;">
         <h2>📚 Biblioteca de Correções</h2>
@@ -1364,7 +1346,7 @@ with tab3:
                     st.success(f"✅ {len(correcoes_adicionadas)} correções selecionadas adicionadas:")
                 for corr in correcoes_adicionadas:
                     st.markdown(f"- {corr}")
-                st.experimental_rerun()
+                st.rerun()
             else:
                 st.warning("⚠️ Nenhuma correção válida para adicionar. Preencha pelo menos um par de campos.")
         
@@ -1372,13 +1354,88 @@ with tab3:
             st.session_state["correcoes_custom"] = {}
             salvar_correcoes_custom(st.session_state["correcoes_custom"])
             st.success("✅ Todas as correções personalizadas foram removidas")
-            st.experimental_rerun()
+            st.rerun()
+
+# =============================
+# Aba 3 – Pós-processamento
+# =============================
+with tab3:
+    st.markdown("""
+    <div style="text-align: center; margin-bottom: 2rem;">
+        <h2>📝 Pós-processamento do Texto</h2>
+        <p style="color: #666;">À esquerda o texto bruto. À direita o texto corrigido.</p>
+    </div>
+    """, unsafe_allow_html=True)
+
+    if not st.session_state["texto_transcrito"].strip():
+        st.info("ℹ️ Ainda não há transcrição disponível. Faça uma transcrição na aba de transcrição.")
+    else:
+        if not st.session_state["texto_pos_processado"].strip():
+            st.session_state["texto_pos_processado"] = (
+                st.session_state["texto_paragrafado"] or st.session_state["texto_transcrito"]
+            )
+
+        col_bruto, col_corr = st.columns(2)
+
+        with col_bruto:
+            st.markdown("#### 🎧 Texto bruto (saída direta do modelo)")
+            st.text_area(
+                "Texto bruto",
+                value=st.session_state["texto_transcrito"],
+                height=400,
+                key="texto_bruto_view",
+                disabled=True
+            )
+
+        with col_corr:
+            st.markdown("#### ✨ Texto corrigido / revisado")
+            texto_atual = st.text_area(
+                "Texto corrigido",
+                value=st.session_state["texto_pos_processado"],
+                height=400,
+                key="texto_pos_processado_area"
+            )
+            st.session_state["texto_pos_processado"] = texto_atual
+
+        bcol1, bcol2 = st.columns(2)
+        with bcol1:
+            aplicar_corr = st.button(
+                "⚙️ Aplicar biblioteca de correções no texto corrigido",
+                use_container_width=True
+            )
+        with bcol2:
+            limpar_btn = st.button(
+                "🧹 Limpar texto corrigido",
+                use_container_width=True
+            )
+
+        if aplicar_corr:
+            texto_corr = pos_processar_texto(st.session_state["texto_pos_processado"])
+            texto_corr = corrigir_pontuacao(capitalizar_frases(texto_corr))
+            texto_corr = organizar_paragrafos(texto_corr)
+            st.session_state["texto_pos_processado"] = texto_corr
+            st.success("✅ Biblioteca de correções aplicada ao texto corrigido.")
+            st.rerun()
+
+        if limpar_btn:
+            st.session_state["texto_pos_processado"] = ""
+            st.rerun()
+
+        st.markdown("### 📥 Download do Texto Corrigido")
+        st.download_button(
+            "📄 Baixar texto corrigido",
+            data=st.session_state["texto_pos_processado"],
+            file_name=f"texto_corrigido_{datetime.now().strftime('%Y%m%d_%H%M%S')}.txt",
+            mime="text/plain",
+            use_container_width=True,
+            key="download_pos_processado"
+        )
 
 # Fechar container principal
 st.markdown('</div>', unsafe_allow_html=True)
 
 # =============================
-# Botão para voltar ao início - VERSÃO SIMPLES
+# Botão para voltar ao início
 # =============================
 st.markdown("""
 <div class="top-btn-container">
@@ -1390,7 +1447,7 @@ st.markdown("""
 st.markdown("---")
 st.markdown("""
 <div style="text-align: center; color: #666; padding: 1.5rem;">
-    <p style="font-size: 1.1rem; font-weight: 600;">🎯 Transcrição Inteligente - v4.2</p>
+    <p style="font-size: 1.1rem; font-weight: 600;">🎯 Transcrição Inteligente - v4.3</p>
     <p style="color: #999; font-size: 0.9rem;">
         Whisper OpenAI • Processamento em tempo real • Correções automáticas • Interface moderna
     </p>
