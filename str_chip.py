@@ -347,12 +347,15 @@ st.markdown("""
         background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
     }
     
-    /* Botão voltar ao início */
-    .top-btn {
+    /* Botão voltar ao início - ESTILO ATUALIZADO */
+    .top-btn-container {
         position: fixed;
         bottom: 20px;
         right: 20px;
         z-index: 1000;
+    }
+    
+    .top-btn {
         background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
         color: white;
         border: none;
@@ -363,11 +366,20 @@ st.markdown("""
         cursor: pointer;
         box-shadow: 0 4px 15px rgba(102, 126, 234, 0.3);
         transition: all 0.3s ease;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        text-decoration: none;
     }
     
     .top-btn:hover {
         transform: translateY(-3px);
         box-shadow: 0 8px 25px rgba(102, 126, 234, 0.4);
+    }
+    
+    /* Adicionar margem para não cobrir conteúdo */
+    .main-content {
+        margin-bottom: 80px;
     }
 </style>
 """, unsafe_allow_html=True)
@@ -383,7 +395,7 @@ st.markdown("""
 """, unsafe_allow_html=True)
 
 # Container principal
-st.markdown('<div class="main-container">', unsafe_allow_html=True)
+st.markdown('<div class="main-container main-content">', unsafe_allow_html=True)
 
 # =============================
 # Arquivo de correções personalizadas
@@ -1246,31 +1258,37 @@ with tab2:
 st.markdown('</div>', unsafe_allow_html=True)
 
 # =============================
-# Botão para voltar ao início
+# Botão para voltar ao início - CORRIGIDO
 # =============================
-st.markdown("""
-<button onclick="window.scrollTo({top: 0, behavior: 'smooth'})" class="top-btn" title="Voltar ao topo">
-    ↑
-</button>
-""", unsafe_allow_html=True)
 
-# =============================
-# JavaScript para funcionalidade do botão
-# =============================
+# Adiciona um botão usando HTML que realmente funciona
 st.markdown("""
+<div class="top-btn-container">
+    <a href="#" class="top-btn" onclick="scrollToTop()">↑</a>
+</div>
+
 <script>
-    // Adiciona funcionalidade ao botão
-    document.addEventListener('DOMContentLoaded', function() {
-        const topBtn = document.querySelector('.top-btn');
-        if (topBtn) {
-            topBtn.addEventListener('click', function() {
-                window.scrollTo({
-                    top: 0,
-                    behavior: 'smooth'
-                });
-            });
-        }
+function scrollToTop() {
+    window.scrollTo({
+        top: 0,
+        behavior: 'smooth'
     });
+    return false; // Previne o comportamento padrão do link
+}
+
+// Também adiciona evento de clique via JavaScript para garantir
+document.addEventListener('DOMContentLoaded', function() {
+    const topBtn = document.querySelector('.top-btn');
+    if (topBtn) {
+        topBtn.addEventListener('click', function(e) {
+            e.preventDefault();
+            window.scrollTo({
+                top: 0,
+                behavior: 'smooth'
+            });
+        });
+    }
+});
 </script>
 """, unsafe_allow_html=True)
 
@@ -1287,3 +1305,4 @@ st.markdown("""
     </p>
 </div>
 """, unsafe_allow_html=True)
+
