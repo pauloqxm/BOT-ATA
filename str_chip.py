@@ -600,19 +600,24 @@ def detectar_npu(cpu_name: str):
 
 def detectar_gpu_e_placa_video():
     """
-    Tenta identificar GPU (CUDA) e placas de vídeo via sistema operacional.
+    Detecta GPU CUDA e placas de vídeo usando:
+    1. PyTorch CUDA
+    2. WMIC (Windows)
+    3. PowerShell (fallback para Windows)
+    4. lspci (Linux)
     """
+
     gpu_cuda = None
     placas_video = []
 
-    # GPU CUDA via PyTorch
+    # ---- 1. Tenta detectar GPU CUDA via PyTorch ----
     if torch.cuda.is_available():
         try:
             gpu_cuda = torch.cuda.get_device_name(0)
         except Exception:
             gpu_cuda = "GPU CUDA detectada"
 
-    # Placa de vídeo via WMIC (Windows) ou lspci (Linux)
+    # ---- 2. Detecção via Windows (WMIC) ----
     try:
         if platform.system() == "Windows":
             creationflags = 0
@@ -631,27 +636,30 @@ def detectar_gpu_e_placa_video():
                 if l.strip() and "Name" not in l
             ]
             if linhas:
-                placas_video = linhas
+                placas_video.extend(linhas)
 
-        elif platform.system() == "Linux":
-            try:
-                result = subprocess.run(
-                    ["lspci"],
+            # ---- 3. Fallback via PowerShell ----
+            if not placas_video:
+                result_ps = subprocess.run(
+                    ["powershell", "-Command", "Get-CimInstance Win32_VideoController | Select-Object -ExpandProperty Name"],
                     capture_output=True,
-                    text=True
+                    text=True,
+                    creationflags=creationflags
                 )
-                linhas_gpu = [
+                ps_lines = [
                     l.strip()
-                    for l in result.stdout.splitlines()
-                    if "VGA compatible controller" in l or "3D controller" in l
+                    for l in result_ps.stdout.splitlines()
+                    if l.strip()
                 ]
-                if linhas_gpu:
-                    placas_video = linhas_gpu
-            except Exception:
-                pass
+                if ps_lines:
+                    placas_video.extend(ps_lines)
 
     except Exception:
         pass
+
+    # Garantir mensagem mais amigável
+    if not placas_video:
+        placas_video = ["Nenhuma placa identificada"]
 
     return gpu_cuda, placas_video
 
