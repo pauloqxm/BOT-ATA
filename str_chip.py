@@ -620,8 +620,7 @@ def detectar_acelerador():
     """
     Detecta automaticamente o melhor acelerador disponível:
     - CUDA (NVIDIA)
-    - DirectML (AMD e Intel via DirectX)
-    - OpenVINO (Intel CPU, Intel GPU, NPU)
+    - OpenVINO (Intel CPU / Intel GPU / NPU), se estiver instalado
     - CPU (fallback)
     """
 
@@ -638,22 +637,11 @@ def detectar_acelerador():
         except Exception:
             pass
 
-    # 2. DIRECTML (AMD / Intel via DirectX)
+    # 2. OPENVINO (somente se o pacote existir)
     try:
-        import torch_directml
-        dml_device = torch_directml.device()
-        return {
-            "engine": "directml",
-            "device": dml_device,
-            "name": "DirectML GPU",
-            "fp16": False
-        }
-    except Exception:
-        pass
-
-    # 3. OPENVINO (Intel – GPU / CPU / NPU)
-    try:
+        import openvino  # apenas para verificar se está instalado
         from openvino.runtime import Core
+
         core = Core()
         dispositivos = core.available_devices
 
@@ -667,12 +655,13 @@ def detectar_acelerador():
                         "engine": "openvino",
                         "device": disp,
                         "name": disp,
-                        "fp16": False
+                        "fp16": False  # fp16 aqui é controle lógico, não PyTorch
                     }
     except Exception:
+        # Se não tiver openvino ou der qualquer erro, ignora e segue para CPU
         pass
 
-    # 4. CPU (fallback)
+    # 3. CPU (fallback)
     return {
         "engine": "cpu",
         "device": "cpu",
@@ -680,52 +669,46 @@ def detectar_acelerador():
         "fp16": False
     }
 
+
 @st.cache_resource(show_spinner=True)
 def carregar_whisper_inteligente(modelo_nome, acelerador):
     """
     Carrega Whisper automaticamente com base no acelerador detectado.
+    Sempre tem fallback seguro para CPU.
     """
     engine = acelerador["engine"]
     device = acelerador["device"]
 
     st.info(f"Acelerador selecionado: **{acelerador['name']}** ({engine})")
 
-    # CUDA / CPU – Whisper PyTorch normal
+    # 1. CUDA / CPU – Whisper PyTorch normal
     if engine in ("cuda", "cpu"):
         return whisper.load_model(modelo_nome, device=engine)
 
-    # DirectML
-    if engine == "directml":
-        try:
-            import torch_directml
-            dml_device = device
-            return whisper.load_model(modelo_nome, device=dml_device)
-        except Exception as e:
-            st.warning(f"Falha ao usar DirectML ({e}). Voltando para CPU.")
-            return whisper.load_model(modelo_nome, device="cpu")
-
-    # OpenVINO
+    # 2. OpenVINO – somente se o módulo openvino_whisper existir
     if engine == "openvino":
         try:
             from openvino_whisper import load_model as load_ov
             return load_ov(modelo_nome, device=device)
-        except Exception as e:
-            st.warning(f"Falha ao usar OpenVINO ({e}). Voltando para CPU.")
+        except Exception:
+            st.warning("OpenVINO não está totalmente disponível. Voltando para CPU.")
             return whisper.load_model(modelo_nome, device="cpu")
 
-    # Fallback
+    # 3. Fallback: CPU sempre funciona
     return whisper.load_model(modelo_nome, device="cpu")
+
 
 # Mantido por compatibilidade, se quiser usar em outro ponto
 @st.cache_resource(show_spinner=True)
 def carregar_modelo_whisper(nome_modelo: str, device: str):
     return whisper.load_model(nome_modelo, device=device)
 
+
 # =============================
 # Whisper oficial – função principal
 # =============================
 def transcrever_com_whisper(audio, sr, modelo_nome: str, chunk_seg: int):
-    # Detecta o melhor acelerador disponível (CUDA / DirectML / OpenVINO / CPU)
+    # Detecta o melhor acelerador disponível (CUDA / OpenVINO / CPU)
     acel = detectar_acelerador()
     device = acel.get("device", "cpu")
     engine = acel.get("engine", "cpu")
@@ -893,6 +876,7 @@ def transcrever_com_whisper(audio, sr, modelo_nome: str, chunk_seg: int):
 
     tempo_total = time.time() - inicio_geral
     return texto_final, timestamps, tempo_total, duracao_min, total_partes, tempos_partes
+
 
 # =============================
 # Sidebar – configurações modernas
