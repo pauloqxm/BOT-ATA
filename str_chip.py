@@ -361,10 +361,12 @@ st.markdown("""
 st.markdown('<div class="main-container main-content">', unsafe_allow_html=True)
 
 # =============================
-# Arquivo de correções personalizadas
+# Arquivo de correções e histórico
 # =============================
 BASE_DIR = Path(__file__).parent if "__file__" in globals() else Path(".")
 CORRECOES_FILE = BASE_DIR / "correcoes_custom.json"
+HISTORICO_FILE = BASE_DIR / "historico_transcricoes.json"
+
 
 def carregar_correcoes_custom():
     if CORRECOES_FILE.exists():
@@ -377,12 +379,34 @@ def carregar_correcoes_custom():
             return {}
     return {}
 
+
 def salvar_correcoes_custom(data: dict):
     try:
         with open(CORRECOES_FILE, "w", encoding="utf-8") as f:
             json.dump(data, f, ensure_ascii=False, indent=2)
     except Exception as e:
         st.error(f"Erro ao salvar correções. {e}")
+
+
+def carregar_historico():
+    if HISTORICO_FILE.exists():
+        try:
+            with open(HISTORICO_FILE, "r", encoding="utf-8") as f:
+                data = json.load(f)
+            if isinstance(data, list):
+                return data
+        except Exception:
+            return []
+    return []
+
+
+def salvar_historico(lista: list):
+    try:
+        with open(HISTORICO_FILE, "w", encoding="utf-8") as f:
+            json.dump(lista, f, ensure_ascii=False, indent=2)
+    except Exception as e:
+        st.error(f"Erro ao salvar histórico. {e}")
+
 
 # =============================
 # Estado da aplicação
@@ -399,6 +423,9 @@ if "texto_paragrafado" not in st.session_state:
 if "texto_pos_processado" not in st.session_state:
     st.session_state["texto_pos_processado"] = ""
 
+if "historico_transcricoes" not in st.session_state:
+    st.session_state["historico_transcricoes"] = carregar_historico()
+
 # =============================
 # Utilitários gerais
 # =============================
@@ -407,6 +434,7 @@ BASE_PROMPT = (
     "acentuação adequada e frases completas. Use nomes próprios, siglas e "
     "termos técnicos conforme aparecem no áudio. Evite inventar trechos."
 )
+
 
 def get_correcoes_dicionario():
     correcoes_base = {
@@ -443,6 +471,7 @@ def get_correcoes_dicionario():
     correcoes.update(correcoes_custom)
     return correcoes
 
+
 def pos_processar_texto(texto: str) -> str:
     if not texto:
         return ""
@@ -453,6 +482,7 @@ def pos_processar_texto(texto: str) -> str:
         texto = re.sub(padrao, correto, texto, flags=re.IGNORECASE)
     texto = re.sub(r"\s+([.,!?])", r"\1", texto)
     return texto.strip()
+
 
 def organizar_paragrafos(texto: str, max_caracteres=500) -> str:
     if not texto:
@@ -471,6 +501,7 @@ def organizar_paragrafos(texto: str, max_caracteres=500) -> str:
         paragrafos.append(paragrafo_atual.strip())
     return "\n\n".join(paragrafos)
 
+
 def capitalizar_frases(texto: str) -> str:
     if not texto:
         return ""
@@ -484,6 +515,7 @@ def capitalizar_frases(texto: str) -> str:
                 frases_capitalizadas.append(frase)
     return ' '.join(frases_capitalizadas)
 
+
 def corrigir_pontuacao(texto: str) -> str:
     if not texto:
         return ""
@@ -492,6 +524,7 @@ def corrigir_pontuacao(texto: str) -> str:
     texto = re.sub(r'([.,!?:;]){2,}', r'\1', texto)
     texto = re.sub(r'\s+', ' ', texto)
     return texto.strip()
+
 
 def formatar_ata(texto: str) -> str:
     # Mantida para uso futuro, mas não exposta na UI de pós-processamento
@@ -504,6 +537,7 @@ def formatar_ata(texto: str) -> str:
         texto += "\n\n---\nFIM DA ATA\n"
     return texto
 
+
 def dividir_em_chunks(audio, sr, chunk_seg=120):
     partes = []
     tam = int(chunk_seg * sr)
@@ -515,10 +549,12 @@ def dividir_em_chunks(audio, sr, chunk_seg=120):
         partes.append((parte, t_ini, t_fim))
     return partes
 
+
 def formatar_tempo(segundos: float) -> str:
     minutos = int(segundos // 60)
     seg = int(segundos % 60)
     return f"{minutos:02d}:{seg:02d}"
+
 
 def formatar_timestamps(timestamps, max_chars=400):
     linhas = []
@@ -531,13 +567,11 @@ def formatar_timestamps(timestamps, max_chars=400):
         linhas.append(f"<div class='timestamp-item'><b>[{inicio} - {fim}]</b> {texto}</div>")
     return "\n".join(linhas)
 
+
 # =============================
 # Detecção de NPU / GPU / Placa de vídeo (Windows)
 # =============================
 def detectar_npu(cpu_name: str):
-    """
-    Detecção simples de NPU baseada no nome do processador.
-    """
     if not cpu_name:
         return False, "Não identificado"
 
@@ -554,14 +588,11 @@ def detectar_npu(cpu_name: str):
 
     return tem_npu, descricao
 
+
 def detectar_gpu_e_placa_video():
-    """
-    Detecta GPU CUDA e placas de vídeo no Windows.
-    """
     gpu_cuda = None
     placas_video = []
 
-    # GPU CUDA via PyTorch
     if torch.cuda.is_available():
         try:
             gpu_cuda = torch.cuda.get_device_name(0)
@@ -574,7 +605,6 @@ def detectar_gpu_e_placa_video():
             if hasattr(subprocess, "CREATE_NO_WINDOW"):
                 creationflags = subprocess.CREATE_NO_WINDOW
 
-            # Tenta WMIC
             result = subprocess.run(
                 ["wmic", "path", "win32_VideoController", "get", "Name"],
                 capture_output=True,
@@ -589,7 +619,6 @@ def detectar_gpu_e_placa_video():
             if linhas:
                 placas_video.extend(linhas)
 
-            # Fallback via PowerShell
             if not placas_video:
                 result_ps = subprocess.run(
                     ["powershell", "-Command", "Get-CimInstance Win32_VideoController | Select-Object -ExpandProperty Name"],
@@ -612,6 +641,7 @@ def detectar_gpu_e_placa_video():
         placas_video = ["Nenhuma placa identificada"]
 
     return gpu_cuda, placas_video
+
 
 # =============================
 # ACELERAÇÃO AUTOMÁTICA UNIVERSAL
@@ -639,13 +669,11 @@ def detectar_acelerador():
 
     # 2. OPENVINO (somente se o pacote existir)
     try:
-        import openvino  # apenas para verificar se está instalado
+        import openvino  # noqa: F401
         from openvino.runtime import Core
 
         core = Core()
         dispositivos = core.available_devices
-
-        # ordem de preferência
         prioridade = ["GPU", "NPU", "CPU"]
 
         for preferido in prioridade:
@@ -655,10 +683,9 @@ def detectar_acelerador():
                         "engine": "openvino",
                         "device": disp,
                         "name": disp,
-                        "fp16": False  # fp16 aqui é controle lógico, não PyTorch
+                        "fp16": False
                     }
     except Exception:
-        # Se não tiver openvino ou der qualquer erro, ignora e segue para CPU
         pass
 
     # 3. CPU (fallback)
@@ -672,20 +699,14 @@ def detectar_acelerador():
 
 @st.cache_resource(show_spinner=True)
 def carregar_whisper_inteligente(modelo_nome, acelerador):
-    """
-    Carrega Whisper automaticamente com base no acelerador detectado.
-    Sempre tem fallback seguro para CPU.
-    """
     engine = acelerador["engine"]
     device = acelerador["device"]
 
     st.info(f"Acelerador selecionado: **{acelerador['name']}** ({engine})")
 
-    # 1. CUDA / CPU – Whisper PyTorch normal
     if engine in ("cuda", "cpu"):
         return whisper.load_model(modelo_nome, device=engine)
 
-    # 2. OpenVINO – somente se o módulo openvino_whisper existir
     if engine == "openvino":
         try:
             from openvino_whisper import load_model as load_ov
@@ -694,11 +715,9 @@ def carregar_whisper_inteligente(modelo_nome, acelerador):
             st.warning("OpenVINO não está totalmente disponível. Voltando para CPU.")
             return whisper.load_model(modelo_nome, device="cpu")
 
-    # 3. Fallback: CPU sempre funciona
     return whisper.load_model(modelo_nome, device="cpu")
 
 
-# Mantido por compatibilidade, se quiser usar em outro ponto
 @st.cache_resource(show_spinner=True)
 def carregar_modelo_whisper(nome_modelo: str, device: str):
     return whisper.load_model(nome_modelo, device=device)
@@ -708,7 +727,6 @@ def carregar_modelo_whisper(nome_modelo: str, device: str):
 # Whisper oficial – função principal
 # =============================
 def transcrever_com_whisper(audio, sr, modelo_nome: str, chunk_seg: int):
-    # Detecta o melhor acelerador disponível (CUDA / OpenVINO / CPU)
     acel = detectar_acelerador()
     device = acel.get("device", "cpu")
     engine = acel.get("engine", "cpu")
@@ -731,7 +749,6 @@ def transcrever_com_whisper(audio, sr, modelo_nome: str, chunk_seg: int):
 
     duracao_min = len(audio) / sr / 60
     modelo_efetivo = modelo_nome
-
     engine_label = str(engine).upper()
 
     st.markdown(f"""
@@ -748,13 +765,12 @@ def transcrever_com_whisper(audio, sr, modelo_nome: str, chunk_seg: int):
     </div>
     """, unsafe_allow_html=True)
 
-    # Carrega o modelo de acordo com o acelerador detectado
     with st.spinner(f"🔧 Carregando modelo Whisper {modelo_efetivo}..."):
         model = carregar_whisper_inteligente(modelo_efetivo, acel)
 
     partes = dividir_em_chunks(audio, sr, chunk_seg)
     total_partes = len(partes)
-    
+
     col1, col2, col3 = st.columns(3)
     with col1:
         st.markdown(f"""
@@ -792,7 +808,7 @@ def transcrever_com_whisper(audio, sr, modelo_nome: str, chunk_seg: int):
     for idx, (parte, t_ini, t_fim) in enumerate(partes, start=1):
         janela_min = t_ini / 60
         janela_max = t_fim / 60
-        
+
         st.markdown(f"""
         <div class="custom-card">
             <div style="display: flex; align-items: center; justify-content: space-between;">
@@ -811,19 +827,19 @@ def transcrever_com_whisper(audio, sr, modelo_nome: str, chunk_seg: int):
 
         inicio_parte = time.time()
 
-        # Monta kwargs da transcrição de forma segura para cada engine
-        transcribe_kwargs = dict(
-            language="pt",
-            task="transcribe",
-            temperature=[0.0, 0.2],
-            best_of=5,
-            initial_prompt=BASE_PROMPT,
-        )
-        # fp16 só faz sentido em CUDA/CPU (PyTorch)
-        if engine in ("cuda", "cpu"):
-            transcribe_kwargs["fp16"] = fp16
+        kwargs = {
+            "language": "pt",
+            "task": "transcribe",
+            "temperature": [0.0, 0.2],
+            "best_of": 5,
+            "initial_prompt": BASE_PROMPT,
+        }
 
-        result = model.transcribe(parte, **transcribe_kwargs)
+        # só usa FP16 se for CUDA mesmo
+        if engine == "cuda" and torch.cuda.is_available() and fp16:
+            kwargs["fp16"] = True
+
+        result = model.transcribe(parte, **kwargs)
 
         tempo_parte = time.time() - inicio_parte
         tempos_partes.append(tempo_parte)
@@ -889,7 +905,7 @@ with st.sidebar:
         <p style="margin: 0; opacity: 0.9;">Ajuste os parâmetros de processamento</p>
     </div>
     """, unsafe_allow_html=True)
-    
+
     st.markdown("### 🎯 Modelo Whisper")
     modelos = {
         "🧠 tiny – velocidade máxima": "tiny",
@@ -904,9 +920,9 @@ with st.sidebar:
         index=1
     )
     modelo_whisper = modelos[modelo_label]
-    
+
     st.markdown("---")
-    
+
     st.markdown("### 📊 Tamanho das Partes")
     chunk_segundos = st.slider(
         "Duração (segundos):",
@@ -916,19 +932,19 @@ with st.sidebar:
         step=30,
         help="Partes menores = mais preciso\nPartes maiores = mais rápido"
     )
-    
+
     st.markdown("---")
     st.markdown("### 💻 Sistema")
-    
+
     try:
         cpu_info = platform.processor()
         if not cpu_info or cpu_info == "":
             cpu_info = "Processador não identificado"
-    except:
+    except Exception:
         cpu_info = "Processador não identificado"
-    
+
     ram_total = psutil.virtual_memory().total / (1024**3)
-    
+
     col1, col2 = st.columns(2)
     with col1:
         st.metric("Threads", num_threads)
@@ -936,7 +952,7 @@ with st.sidebar:
     with col2:
         st.metric("PyTorch", torch.__version__[:6])
         st.metric("Sistema", platform.system())
-    
+
     with st.expander("📋 Detalhes do Sistema"):
         st.write(f"**Processador:** {cpu_info}")
         st.write(f"**Arquitetura:** {platform.machine()}")
@@ -969,14 +985,15 @@ with st.sidebar:
         for nome in placas_video:
             st.write(f"• {nome}")
 
+
 # =============================
-# Abas principais estilizadas
-# ORDEM: Transcrever • Biblioteca • Pós-processamento
+# Abas principais
 # =============================
-tab1, tab2, tab3 = st.tabs([
+tab1, tab2, tab3, tab4 = st.tabs([
     "🎧 TRANSCREVER ÁUDIO",
     "📚 BIBLIOTECA DE CORREÇÕES",
-    "📝 PÓS-PROCESSAMENTO"
+    "📝 PÓS-PROCESSAMENTO",
+    "📊 HISTÓRICO"
 ])
 
 # =============================
@@ -989,7 +1006,7 @@ with tab1:
         <p style="color: #666;">Suporta MP3, WAV, M4A, OGG, FLAC, AAC, WMA</p>
     </div>
     """, unsafe_allow_html=True)
-    
+
     audio_file = st.file_uploader(
         "Faça o upload do áudio",
         type=["mp3", "wav", "m4a", "ogg", "flac", "aac", "wma"],
@@ -1052,7 +1069,7 @@ with tab1:
                     total_partes_preview = len(partes_preview)
 
                 st.markdown("### 📊 Visão Geral do Arquivo")
-                
+
                 col_a, col_b, col_c = st.columns(3)
                 with col_a:
                     st.markdown(f"""
@@ -1087,7 +1104,6 @@ with tab1:
                     audio, sr, modelo_whisper, chunk_segundos
                 )
 
-                # Pós-processamento automático + parágrafos
                 texto_pos = pos_processar_texto(texto_bruto)
                 texto_corrigido = corrigir_pontuacao(capitalizar_frases(texto_pos))
                 texto_paragrafado = organizar_paragrafos(texto_corrigido)
@@ -1099,6 +1115,21 @@ with tab1:
                 if not texto_corrigido.strip():
                     st.error("❌ Nenhum texto final gerado. Verifique se o áudio tem fala clara.")
                 else:
+                    # salva no histórico
+                    hist = st.session_state.get("historico_transcricoes", [])
+                    item = {
+                        "timestamp": datetime.now().isoformat(),
+                        "arquivo": audio_file.name,
+                        "modelo": modelo_whisper,
+                        "duracao_min": float(duracao_min),
+                        "tempo_proc": float(tempo_proc),
+                        "palavras": len(texto_corrigido.split()),
+                        "preview": texto_paragrafado[:1000] + ("..." if len(texto_paragrafado) > 1000 else "")
+                    }
+                    hist.insert(0, item)
+                    st.session_state["historico_transcricoes"] = hist[:20]
+                    salvar_historico(st.session_state["historico_transcricoes"])
+
                     st.markdown("""
                     <div class="success-card" style="padding: 2rem;">
                         <div style="text-align: center;">
@@ -1107,9 +1138,9 @@ with tab1:
                         </div>
                     </div>
                     """, unsafe_allow_html=True)
-                    
+
                     st.markdown("### 📈 Estatísticas de Processamento")
-                    
+
                     col1, col2, col3, col4 = st.columns(4)
                     with col1:
                         st.markdown(f"""
@@ -1154,7 +1185,7 @@ with tab1:
                     preview_texto = texto_paragrafado[:800] + "..." if len(texto_paragrafado) > 800 else texto_paragrafado
                     st.markdown(f"""
                     <div class="text-preview">
-                        {preview_texto.replace("\n\n", "<br><br>")}
+                        {preview_texto.replace("\\n\\n", "<br><br>")}
                         <br><br><small><i>Total: {len(texto_corrigido)} caracteres, {len(texto_corrigido.split())} palavras</i></small>
                     </div>
                     """, unsafe_allow_html=True)
@@ -1168,7 +1199,7 @@ with tab1:
                         </div>
                         """, unsafe_allow_html=True)
                         texto_ts = "\n".join([
-                            f"[{formatar_tempo(t['start'])} - {formatar_tempo(t['end'])}] {t['text'][:400]}" 
+                            f"[{formatar_tempo(t['start'])} - {formatar_tempo(t['end'])}] {t['text'][:400]}"
                             for t in ts
                         ])
                     else:
@@ -1178,7 +1209,7 @@ with tab1:
                     st.markdown("### 📥 Download dos Resultados")
                     nome_base = os.path.splitext(audio_file.name)[0]
                     timestamp_str = datetime.now().strftime("%Y%m%d_%H%M%S")
-                    
+
                     dl_col1, dl_col2 = st.columns(2)
                     with dl_col1:
                         st.download_button(
@@ -1207,7 +1238,7 @@ with tab1:
                     pass
 
 # =============================
-# Aba 2 – Biblioteca de correções (meio)
+# Aba 2 – Biblioteca de correções
 # =============================
 with tab2:
     st.markdown("""
@@ -1216,16 +1247,16 @@ with tab2:
         <p style="color: #666;">Gerencie as substituições automáticas aplicadas nas transcrições</p>
     </div>
     """, unsafe_allow_html=True)
-    
+
     st.markdown("### 📋 Correções Ativas")
     dicionario_atual = get_correcoes_dicionario()
-    
+
     if dicionario_atual:
         df_correcoes = pd.DataFrame([
             {"Original": k, "Substituir por": v}
             for k, v in dicionario_atual.items()
         ])
-        
+
         st.dataframe(
             df_correcoes,
             use_container_width=True,
@@ -1241,7 +1272,7 @@ with tab2:
                 )
             }
         )
-        
+
         st.markdown(f"""
         <div class="info-card">
             <div style="display: flex; align-items: center; justify-content: space-between;">
@@ -1265,16 +1296,16 @@ with tab2:
             </div>
         </div>
         """, unsafe_allow_html=True)
-    
+
     st.markdown("### ➕ Adicionar Novas Correções")
-    
+
     with st.form("form_add_correcoes"):
         st.markdown("""
         <div class="custom-card">
             <h4>Adicionar Múltiplas Regras de Correção</h4>
             <p style="color: #666; font-size: 0.9rem;">Preencha quantos campos desejar. Os campos vazios serão ignorados.</p>
         """, unsafe_allow_html=True)
-        
+
         correcoes_inputs = []
         for i in range(8):
             col_orig, col_sub = st.columns([1, 1])
@@ -1291,7 +1322,7 @@ with tab2:
                     key=f"substituir_input_{i}"
                 )
             correcoes_inputs.append((original, substituir))
-        
+
         submit_col1, submit_col2, submit_col3 = st.columns([2, 1, 1])
         with submit_col1:
             submitted = st.form_submit_button(
@@ -1310,9 +1341,9 @@ with tab2:
                 use_container_width=True,
                 type="secondary"
             )
-        
+
         st.markdown("</div>", unsafe_allow_html=True)
-        
+
         if submitted or add_selected:
             correcoes_adicionadas = []
             for original, substituir in correcoes_inputs:
@@ -1321,7 +1352,7 @@ with tab2:
                     valor = substituir.strip()
                     st.session_state["correcoes_custom"][chave] = valor
                     correcoes_adicionadas.append(f"**'{chave}'** → **'{valor}'**")
-            
+
             if correcoes_adicionadas:
                 salvar_correcoes_custom(st.session_state["correcoes_custom"])
                 if submitted:
@@ -1333,7 +1364,7 @@ with tab2:
                 st.rerun()
             else:
                 st.warning("⚠️ Nenhuma correção válida para adicionar. Preencha pelo menos um par de campos.")
-        
+
         if clear_all:
             st.session_state["correcoes_custom"] = {}
             salvar_correcoes_custom(st.session_state["correcoes_custom"])
@@ -1414,6 +1445,56 @@ with tab3:
             use_container_width=True,
             key="download_pos_processado"
         )
+
+# =============================
+# Aba 4 – Histórico
+# =============================
+with tab4:
+    st.markdown("""
+    <div style="text-align: center; margin-bottom: 2rem;">
+        <h2>📊 Histórico de Transcrições</h2>
+        <p style="color: #666;">Veja as últimas transcrições realizadas e recarregue para editar</p>
+    </div>
+    """, unsafe_allow_html=True)
+
+    historico = st.session_state.get("historico_transcricoes", [])
+
+    if not historico:
+        st.info("ℹ️ Ainda não há itens no histórico. Faça uma transcrição para começar.")
+    else:
+        df_hist = pd.DataFrame(historico)
+        df_hist["timestamp"] = pd.to_datetime(df_hist["timestamp"], errors="coerce")
+        df_hist["Quando"] = df_hist["timestamp"].dt.strftime("%d/%m/%Y %H:%M")
+
+        st.markdown("### 📋 Lista de transcrições")
+        st.dataframe(
+            df_hist[["Quando", "arquivo", "modelo", "palavras", "duracao_min", "tempo_proc"]],
+            use_container_width=True,
+            hide_index=True
+        )
+
+        opcoes = [
+            f"{i+1} • {item['arquivo']} • {pd.to_datetime(item['timestamp']).strftime('%d/%m/%Y %H:%M')}"
+            for i, item in enumerate(historico)
+        ]
+        escolha = st.selectbox("Selecione uma transcrição para carregar", opcoes)
+
+        idx_escolhido = opcoes.index(escolha)
+        item_sel = historico[idx_escolhido]
+
+        st.markdown("### 🔍 Prévia")
+        st.markdown(f"""
+        <div class="text-preview">
+            {item_sel['preview'].replace("\\n\\n", "<br><br>")}
+        </div>
+        """, unsafe_allow_html=True)
+
+        if st.button("📥 Carregar esta transcrição na aba de pós-processamento", use_container_width=True):
+            st.session_state["texto_transcrito"] = item_sel["preview"]
+            st.session_state["texto_paragrafado"] = item_sel["preview"]
+            st.session_state["texto_pos_processado"] = item_sel["preview"]
+            st.success("✅ Texto carregado. Vá na aba '📝 PÓS-PROCESSAMENTO' para editar.")
+
 
 # Fechar container principal
 st.markdown('</div>', unsafe_allow_html=True)
