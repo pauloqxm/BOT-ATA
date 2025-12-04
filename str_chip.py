@@ -39,6 +39,9 @@ st.set_page_config(
     initial_sidebar_state="expanded"
 )
 
+# Anchor para o botão "voltar ao topo"
+st.markdown('<a id="top"></a>', unsafe_allow_html=True)
+
 # CSS personalizado para interface moderna
 st.markdown("""
 <style>
@@ -347,7 +350,7 @@ st.markdown("""
         background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
     }
     
-    /* Botão voltar ao início - ESTILO ATUALIZADO */
+    /* Botão voltar ao início - NOVA VERSÃO (sem JS) */
     .top-btn-container {
         position: fixed;
         bottom: 20px;
@@ -377,7 +380,6 @@ st.markdown("""
         box-shadow: 0 8px 25px rgba(102, 126, 234, 0.4);
     }
     
-    /* Adicionar margem para não cobrir conteúdo */
     .main-content {
         margin-bottom: 80px;
     }
@@ -404,7 +406,6 @@ BASE_DIR = Path(__file__).parent if "__file__" in globals() else Path(".")
 CORRECOES_FILE = BASE_DIR / "correcoes_custom.json"
 
 def carregar_correcoes_custom():
-    """Carrega as correções personalizadas do arquivo JSON."""
     if CORRECOES_FILE.exists():
         try:
             with open(CORRECOES_FILE, "r", encoding="utf-8") as f:
@@ -416,7 +417,6 @@ def carregar_correcoes_custom():
     return {}
 
 def salvar_correcoes_custom(data: dict):
-    """Salva as correções personalizadas em arquivo JSON."""
     try:
         with open(CORRECOES_FILE, "w", encoding="utf-8") as f:
             json.dump(data, f, ensure_ascii=False, indent=2)
@@ -432,6 +432,12 @@ if "correcoes_custom" not in st.session_state:
 if "texto_transcrito" not in st.session_state:
     st.session_state["texto_transcrito"] = ""
 
+if "texto_paragrafado" not in st.session_state:
+    st.session_state["texto_paragrafado"] = ""
+
+if "texto_pos_processado" not in st.session_state:
+    st.session_state["texto_pos_processado"] = ""
+
 # =============================
 # Utilitários gerais
 # =============================
@@ -442,7 +448,6 @@ BASE_PROMPT = (
 )
 
 def get_correcoes_dicionario():
-    """Dicionário base somado às correções customizadas (sem espaços extras)."""
     correcoes_base = {
         "pq": "porque",
         "tb": "também",
@@ -464,7 +469,6 @@ def get_correcoes_dicionario():
         "qd": "quando",
         "qq": "qualquer",
     }
-    # Normaliza customizadas (remove espaços ao redor)
     raw_custom = st.session_state.get("correcoes_custom", {})
     correcoes_custom = {}
     for k, v in raw_custom.items():
@@ -479,107 +483,63 @@ def get_correcoes_dicionario():
     return correcoes
 
 def pos_processar_texto(texto: str) -> str:
-    """Aplica a biblioteca de correções ao texto transcrito (case-insensitive e com borda de palavra)."""
     if not texto:
         return ""
-
     correcoes = get_correcoes_dicionario()
-
-    # Normaliza espaços múltiplos
     texto = re.sub(r"\s+", " ", texto)
-
-    # Aplica cada correção com \b e ignore case
     for errado, correto in correcoes.items():
         padrao = r"\b{}\b".format(re.escape(errado))
         texto = re.sub(padrao, correto, texto, flags=re.IGNORECASE)
-
-    # Ajusta espaço antes de pontuação
     texto = re.sub(r"\s+([.,!?])", r"\1", texto)
-
     return texto.strip()
 
 def organizar_paragrafos(texto: str, max_caracteres=500) -> str:
-    """Divide o texto em parágrafos com base na pontuação e limite de caracteres."""
     if not texto:
         return ""
-    
-    # Divide por pontos finais que não são abreviações
     frases = re.split(r'(?<!\w\.\w.)(?<![A-Z][a-z]\.)(?<=\.|\?|\!)\s+', texto)
-    
     paragrafos = []
     paragrafo_atual = ""
-    
     for frase in frases:
         if not frase.strip():
             continue
-            
-        # Se adicionar esta frase exceder o limite, fecha o parágrafo atual
         if len(paragrafo_atual) + len(frase) > max_caracteres and paragrafo_atual:
             paragrafos.append(paragrafo_atual.strip())
             paragrafo_atual = ""
-        
         paragrafo_atual += frase + " "
-    
-    # Adiciona o último parágrafo
     if paragrafo_atual:
         paragrafos.append(paragrafo_atual.strip())
-    
-    # Junta parágrafos com quebra dupla de linha
     return "\n\n".join(paragrafos)
 
 def capitalizar_frases(texto: str) -> str:
-    """Capitaliza a primeira letra de cada frase."""
     if not texto:
         return ""
-    
-    # Divide o texto em frases
     frases = re.split(r'(?<=[.!?])\s+', texto)
-    
-    # Capitaliza cada frase
     frases_capitalizadas = []
     for frase in frases:
         if frase:
             frase = frase.strip()
             if frase:
-                # Capitaliza primeira letra
                 frase = frase[0].upper() + frase[1:]
                 frases_capitalizadas.append(frase)
-    
     return ' '.join(frases_capitalizadas)
 
 def corrigir_pontuacao(texto: str) -> str:
-    """Corrige problemas comuns de pontuação."""
     if not texto:
         return ""
-    
-    # Remove espaços antes de pontuação
     texto = re.sub(r'\s+([.,!?:;])', r'\1', texto)
-    
-    # Adiciona espaço após pontuação (exceto se for ponto final de abreviação)
     texto = re.sub(r'([.,!?:;])(?!\s|$)', r'\1 ', texto)
-    
-    # Corrige múltiplas pontuações
     texto = re.sub(r'([.,!?:;]){2,}', r'\1', texto)
-    
-    # Remove espaços duplicados
     texto = re.sub(r'\s+', ' ', texto)
-    
     return texto.strip()
 
 def formatar_ata(texto: str) -> str:
-    """Formata texto para estrutura de ata formal."""
     if not texto:
         return ""
-    
-    # Adiciona cabeçalho se não existir
     if not texto.startswith("ATA DA REUNIÃO"):
         data_atual = datetime.now().strftime("%d/%m/%Y")
         texto = f"ATA DA REUNIÃO\nData: {data_atual}\n\n{texto}"
-    
-    # Adiciona rodapé se não existir
-    if not "Encerramento" in texto and not "FIM DA ATA" in texto:
+    if "Encerramento" not in texto and "FIM DA ATA" not in texto:
         texto += "\n\n---\nFIM DA ATA\n"
-    
     return texto
 
 def dividir_em_chunks(audio, sr, chunk_seg=120):
@@ -587,26 +547,23 @@ def dividir_em_chunks(audio, sr, chunk_seg=120):
     tam = int(chunk_seg * sr)
     total = len(audio)
     for i in range(0, total, tam):
-        parte = audio[i : i + tam]
+        parte = audio[i: i + tam]
         t_ini = i / sr
         t_fim = (i + len(parte)) / sr
         partes.append((parte, t_ini, t_fim))
     return partes
 
 def formatar_tempo(segundos: float) -> str:
-    """Converte segundos para formato MM:SS"""
     minutos = int(segundos // 60)
     seg = int(segundos % 60)
     return f"{minutos:02d}:{seg:02d}"
 
 def formatar_timestamps(timestamps, max_chars=400):
-    """Formata timestamps com limite de caracteres por item"""
     linhas = []
     for ts in timestamps:
         texto = ts['text']
         if len(texto) > max_chars:
             texto = texto[:max_chars] + "..."
-        
         inicio = formatar_tempo(ts['start'])
         fim = formatar_tempo(ts['end'])
         linhas.append(f"<div class='timestamp-item'><b>[{inicio} - {fim}]</b> {texto}</div>")
@@ -658,13 +615,12 @@ def transcrever_com_whisper(audio, sr, modelo_nome: str, chunk_seg: int):
     </div>
     """, unsafe_allow_html=True)
 
-    with st.spinner(f"📦 Carregando modelo Whisper {modelo_efetivo}..."):
+    with st.spinner(f"🔧 Carregando modelo Whisper {modelo_efetivo}..."):
         model = carregar_modelo_whisper(modelo_efetivo, device)
 
     partes = dividir_em_chunks(audio, sr, chunk_seg)
     total_partes = len(partes)
     
-    # Contador de partes
     col1, col2, col3 = st.columns(3)
     with col1:
         st.markdown(f"""
@@ -688,7 +644,6 @@ def transcrever_com_whisper(audio, sr, modelo_nome: str, chunk_seg: int):
         </div>
         """, unsafe_allow_html=True)
 
-    # Container de progresso
     st.markdown("### 📊 Progresso da Transcrição")
     progress_bar = st.progress(0)
     progress_col1, progress_col2 = st.columns([4, 1])
@@ -704,7 +659,6 @@ def transcrever_com_whisper(audio, sr, modelo_nome: str, chunk_seg: int):
         janela_min = t_ini / 60
         janela_max = t_fim / 60
         
-        # Status da parte atual
         st.markdown(f"""
         <div class="custom-card">
             <div style="display: flex; align-items: center; justify-content: space-between;">
@@ -776,7 +730,6 @@ def transcrever_com_whisper(audio, sr, modelo_nome: str, chunk_seg: int):
             </div>
             """, unsafe_allow_html=True)
 
-        # Atualizar progresso com percentual
         progresso = idx / total_partes
         progress_bar.progress(progresso)
         percent_text.markdown(f"**{progresso*100:.0f}%**")
@@ -796,7 +749,6 @@ with st.sidebar:
     </div>
     """, unsafe_allow_html=True)
     
-    # Modelo Whisper
     st.markdown("### 🎯 Modelo Whisper")
     modelos = {
         "🧠 tiny – velocidade máxima": "tiny",
@@ -814,7 +766,6 @@ with st.sidebar:
     
     st.markdown("---")
     
-    # Configuração de chunks
     st.markdown("### 📊 Tamanho das Partes")
     chunk_segundos = st.slider(
         "Duração (segundos):",
@@ -825,11 +776,9 @@ with st.sidebar:
         help="Partes menores = mais preciso\nPartes maiores = mais rápido"
     )
     
-    # Info do sistema
     st.markdown("---")
     st.markdown("### 💻 Sistema")
     
-    # Informações do processador
     try:
         cpu_info = platform.processor()
         if not cpu_info or cpu_info == "":
@@ -837,8 +786,7 @@ with st.sidebar:
     except:
         cpu_info = "Processador não identificado"
     
-    # Memória RAM
-    ram_total = psutil.virtual_memory().total / (1024**3)  # GB
+    ram_total = psutil.virtual_memory().total / (1024**3)
     
     col1, col2 = st.columns(2)
     with col1:
@@ -848,33 +796,33 @@ with st.sidebar:
         st.metric("PyTorch", torch.__version__[:6])
         st.metric("Sistema", platform.system())
     
-    # Informações adicionais
     with st.expander("📋 Detalhes do Sistema"):
         st.write(f"**Processador:** {cpu_info}")
         st.write(f"**Arquitetura:** {platform.machine()}")
         st.write(f"**Python:** {platform.python_version()}")
         st.write(f"**Whisper:** {whisper.__version__ if hasattr(whisper, '__version__') else 'N/A'}")
         
-        # Informações de memória
         mem = psutil.virtual_memory()
         st.write(f"**RAM Usada:** {mem.percent}%")
         st.write(f"**RAM Disponível:** {mem.available / (1024**3):.1f} GB")
         
-        # GPU se disponível
         if torch.cuda.is_available():
             st.write(f"**GPU:** {torch.cuda.get_device_name(0)}")
             st.write(f"**VRAM Total:** {torch.cuda.get_device_properties(0).total_memory / (1024**3):.1f} GB")
 
 # =============================
-# Abas principais estilizadas - AGORA COM 2 ABAS (removida EDITOR DE TEXTO)
+# Abas principais estilizadas - 3 ABAS
 # =============================
-tab1, tab2 = st.tabs(["🎧 TRANSCREVER ÁUDIO", "📚 BIBLIOTECA DE CORREÇÕES"])
+tab1, tab2, tab3 = st.tabs([
+    "🎧 TRANSCREVER ÁUDIO",
+    "📝 PÓS-PROCESSAMENTO",
+    "📚 BIBLIOTECA DE CORREÇÕES"
+])
 
 # =============================
 # Aba 1 – Transcrição
 # =============================
 with tab1:
-    # Uploader moderno
     st.markdown("""
     <div style="text-align: center; margin-bottom: 2rem;">
         <h2>🎤 Envie seu Áudio</h2>
@@ -882,11 +830,10 @@ with tab1:
     </div>
     """, unsafe_allow_html=True)
     
-    # Área de upload funcional
     audio_file = st.file_uploader(
-        "Clique para selecionar ou arraste e solte seu arquivo de áudio",
+        "Faça o upload do áudio",
         type=["mp3", "wav", "m4a", "ogg", "flac", "aac", "wma"],
-        label_visibility="collapsed",
+        label_visibility="visible",
         key="audio_uploader_tab1"
     )
 
@@ -907,7 +854,6 @@ with tab1:
         </div>
         """, unsafe_allow_html=True)
 
-    # Botão de transcrição
     col_btn1, col_btn2, col_btn3 = st.columns([1, 2, 1])
     with col_btn2:
         transcribe_clicked = st.button(
@@ -927,7 +873,6 @@ with tab1:
                 caminho_audio = tmp.name
 
             try:
-                # Pré-processamento
                 with st.spinner("🔧 Preparando áudio para processamento..."):
                     audio, sr_original = librosa.load(caminho_audio, sr=None, mono=True)
 
@@ -946,7 +891,6 @@ with tab1:
                     partes_preview = dividir_em_chunks(audio, sr, chunk_segundos)
                     total_partes_preview = len(partes_preview)
 
-                # Métricas iniciais
                 st.markdown("### 📊 Visão Geral do Arquivo")
                 
                 col_a, col_b, col_c = st.columns(3)
@@ -972,9 +916,8 @@ with tab1:
                     </div>
                     """, unsafe_allow_html=True)
 
-                # Processamento principal
                 (
-                    texto,
+                    texto_bruto,
                     ts,
                     tempo_proc,
                     duracao_min,
@@ -984,16 +927,18 @@ with tab1:
                     audio, sr, modelo_whisper, chunk_segundos
                 )
 
-                # Aplica correções básicas
-                texto = pos_processar_texto(texto)
-                
-                # Salva no estado da sessão
-                st.session_state["texto_transcrito"] = texto
+                # Pós-processamento automático + parágrafos
+                texto_pos = pos_processar_texto(texto_bruto)
+                texto_corrigido = corrigir_pontuacao(capitalizar_frases(texto_pos))
+                texto_paragrafado = organizar_paragrafos(texto_corrigido)
 
-                if not texto.strip():
+                st.session_state["texto_transcrito"] = texto_corrigido
+                st.session_state["texto_paragrafado"] = texto_paragrafado
+                st.session_state["texto_pos_processado"] = texto_paragrafado
+
+                if not texto_corrigido.strip():
                     st.error("❌ Nenhum texto final gerado. Verifique se o áudio tem fala clara.")
                 else:
-                    # Resultados
                     st.markdown("""
                     <div class="success-card" style="padding: 2rem;">
                         <div style="text-align: center;">
@@ -1003,7 +948,6 @@ with tab1:
                     </div>
                     """, unsafe_allow_html=True)
                     
-                    # Métricas finais
                     st.markdown("### 📈 Estatísticas de Processamento")
                     
                     col1, col2, col3, col4 = st.columns(4)
@@ -1030,7 +974,7 @@ with tab1:
                         </div>
                         """, unsafe_allow_html=True)
                     with col4:
-                        palavras = len(texto.split())
+                        palavras = len(texto_corrigido.split())
                         st.markdown(f"""
                         <div class="metric-card">
                             <div class="metric-label">Palavras</div>
@@ -1038,7 +982,6 @@ with tab1:
                         </div>
                         """, unsafe_allow_html=True)
 
-                    # Gráfico de desempenho
                     if tempos_partes:
                         st.markdown("### 📊 Desempenho por Parte")
                         df_tempos = pd.DataFrame({
@@ -1047,17 +990,15 @@ with tab1:
                         })
                         st.bar_chart(df_tempos.set_index("Parte"))
 
-                    # Preview do texto
-                    st.markdown("### 🧾 Prévia da Transcrição")
-                    preview_texto = texto[:500] + "..." if len(texto) > 500 else texto
+                    st.markdown("### 🧾 Prévia da Transcrição (com parágrafos)")
+                    preview_texto = texto_paragrafado[:800] + "..." if len(texto_paragrafado) > 800 else texto_paragrafado
                     st.markdown(f"""
                     <div class="text-preview">
-                        {preview_texto}
-                        <br><br><small><i>Total: {len(texto)} caracteres, {len(texto.split())} palavras</i></small>
+                        {preview_texto.replace("\n\n", "<br><br>")}
+                        <br><br><small><i>Total: {len(texto_corrigido)} caracteres, {len(texto_corrigido.split())} palavras</i></small>
                     </div>
                     """, unsafe_allow_html=True)
 
-                    # Timestamps
                     st.markdown("### ⏱️ Timestamps Detalhados")
                     if ts:
                         timestamps_html = formatar_timestamps(ts)
@@ -1074,27 +1015,26 @@ with tab1:
                         st.info("ℹ️ Nenhum timestamp disponível")
                         texto_ts = ""
 
-                    # Botões de download
                     st.markdown("### 📥 Download dos Resultados")
                     nome_base = os.path.splitext(audio_file.name)[0]
-                    timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+                    timestamp_str = datetime.now().strftime("%Y%m%d_%H%M%S")
                     
                     dl_col1, dl_col2 = st.columns(2)
                     with dl_col1:
                         st.download_button(
-                            "📄 Baixar Transcrição Bruta",
-                            data=texto,
-                            file_name=f"transcricao_bruta_{nome_base}_{timestamp}.txt",
+                            "📄 Baixar Transcrição com Parágrafos",
+                            data=texto_paragrafado,
+                            file_name=f"transcricao_paragrafada_{nome_base}_{timestamp_str}.txt",
                             mime="text/plain",
                             use_container_width=True,
-                            key="download_raw_transcription"
+                            key="download_paragrafada"
                         )
                     with dl_col2:
                         if ts:
                             st.download_button(
                                 "⏱️ Baixar Timestamps",
                                 data=texto_ts,
-                                file_name=f"timestamps_{nome_base}_{timestamp}.txt",
+                                file_name=f"timestamps_{nome_base}_{timestamp_str}.txt",
                                 mime="text/plain",
                                 use_container_width=True,
                                 key="download_timestamps_tab1"
@@ -1105,22 +1045,84 @@ with tab1:
                     os.unlink(caminho_audio)
                 except Exception:
                     pass
-    else:
-        if not audio_file:
-            st.markdown("""
-            <div style="text-align: center; padding: 3rem; background: linear-gradient(135deg, #f8f9ff 0%, #f0f2ff 100%); 
-                      border-radius: 15px; margin: 2rem 0;">
-                <div style="font-size: 4rem; margin-bottom: 1rem;">🎧</div>
-                <h3 style="color: #667eea;">Faça o upload do áudio</h3>
-                <p style="color: #666;">Arraste e solte ou clique para selecionar um arquivo</p>
-                <p style="color: #999; font-size: 0.9rem;">Formatos suportados: MP3, WAV, M4A, OGG, FLAC, AAC, WMA</p>
-            </div>
-            """, unsafe_allow_html=True)
 
 # =============================
-# Aba 2 – Biblioteca de correções
+# Aba 2 – Pós-processamento
 # =============================
 with tab2:
+    st.markdown("""
+    <div style="text-align: center; margin-bottom: 2rem;">
+        <h2>📝 Pós-processamento do Texto</h2>
+        <p style="color: #666;">Revise, aplique a biblioteca de correções e formate como ATA</p>
+    </div>
+    """, unsafe_allow_html=True)
+
+    if not st.session_state["texto_transcrito"].strip():
+        st.info("ℹ️ Ainda não há transcrição disponível. Faça uma transcrição na aba anterior.")
+    else:
+        if not st.session_state["texto_pos_processado"].strip():
+            st.session_state["texto_pos_processado"] = (
+                st.session_state["texto_paragrafado"] or st.session_state["texto_transcrito"]
+            )
+
+        texto_atual = st.text_area(
+            "Texto pós-processado",
+            value=st.session_state["texto_pos_processado"],
+            height=400,
+            key="texto_pos_processado_area"
+        )
+
+        st.session_state["texto_pos_processado"] = texto_atual
+
+        bcol1, bcol2, bcol3 = st.columns(3)
+        with bcol1:
+            aplicar_corr = st.button(
+                "⚙️ Aplicar biblioteca de correções",
+                use_container_width=True
+            )
+        with bcol2:
+            formatar_ata_btn = st.button(
+                "📄 Formatar como ATA",
+                use_container_width=True
+            )
+        with bcol3:
+            limpar_btn = st.button(
+                "🧹 Limpar texto",
+                use_container_width=True
+            )
+
+        if aplicar_corr:
+            texto_corr = pos_processar_texto(st.session_state["texto_pos_processado"])
+            texto_corr = corrigir_pontuacao(capitalizar_frases(texto_corr))
+            texto_corr = organizar_paragrafos(texto_corr)
+            st.session_state["texto_pos_processado"] = texto_corr
+            st.success("✅ Biblioteca de correções aplicada e parágrafos reorganizados.")
+            st.experimental_rerun()
+
+        if formatar_ata_btn:
+            texto_ata = formatar_ata(st.session_state["texto_pos_processado"])
+            st.session_state["texto_pos_processado"] = texto_ata
+            st.success("✅ Texto formatado como ATA.")
+            st.experimental_rerun()
+
+        if limpar_btn:
+            st.session_state["texto_pos_processado"] = ""
+            st.experimental_rerun()
+
+        st.markdown("### 📥 Download do Texto Pós-processado")
+        st.download_button(
+            "📄 Baixar texto pós-processado",
+            data=st.session_state["texto_pos_processado"],
+            file_name=f"texto_pos_processado_{datetime.now().strftime('%Y%m%d_%H%M%S')}.txt",
+            mime="text/plain",
+            use_container_width=True,
+            key="download_pos_processado"
+        )
+
+# =============================
+# Aba 3 – Biblioteca de correções
+# =============================
+with tab3:
     st.markdown("""
     <div style="text-align: center; margin-bottom: 2rem;">
         <h2>📚 Biblioteca de Correções</h2>
@@ -1128,7 +1130,6 @@ with tab2:
     </div>
     """, unsafe_allow_html=True)
     
-    # Correções em uso
     st.markdown("### 📋 Correções Ativas")
     dicionario_atual = get_correcoes_dicionario()
     
@@ -1178,7 +1179,6 @@ with tab2:
         </div>
         """, unsafe_allow_html=True)
     
-    # Adicionar nova correção - AGORA COM 8 CAMPOS
     st.markdown("### ➕ Adicionar Novas Correções")
     
     with st.form("form_add_correcoes"):
@@ -1188,20 +1188,19 @@ with tab2:
             <p style="color: #666; font-size: 0.9rem;">Preencha quantos campos desejar. Os campos vazios serão ignorados.</p>
         """, unsafe_allow_html=True)
         
-        # Criar 8 pares de campos
         correcoes_inputs = []
         for i in range(8):
             col_orig, col_sub = st.columns([1, 1])
             with col_orig:
                 original = st.text_input(
                     f"Original {i+1}",
-                    placeholder=f"Ex: vc, tb, d+, etc.",
+                    placeholder="Ex: vc, tb, d+, etc.",
                     key=f"original_input_{i}"
                 )
             with col_sub:
                 substituir = st.text_input(
                     f"Substituir por {i+1}",
-                    placeholder=f"Ex: você, também, muito, etc.",
+                    placeholder="Ex: você, também, muito, etc.",
                     key=f"substituir_input_{i}"
                 )
             correcoes_inputs.append((original, substituir))
@@ -1244,7 +1243,7 @@ with tab2:
                     st.success(f"✅ {len(correcoes_adicionadas)} correções selecionadas adicionadas:")
                 for corr in correcoes_adicionadas:
                     st.markdown(f"- {corr}")
-                st.rerun()
+                st.experimental_rerun()
             else:
                 st.warning("⚠️ Nenhuma correção válida para adicionar. Preencha pelo menos um par de campos.")
         
@@ -1252,51 +1251,25 @@ with tab2:
             st.session_state["correcoes_custom"] = {}
             salvar_correcoes_custom(st.session_state["correcoes_custom"])
             st.success("✅ Todas as correções personalizadas foram removidas")
-            st.rerun()
+            st.experimental_rerun()
 
 # Fechar container principal
 st.markdown('</div>', unsafe_allow_html=True)
 
 # =============================
-# Botão para voltar ao início - CORRIGIDO
+# Botão para voltar ao início - VERSÃO SIMPLES
 # =============================
-
-# Adiciona um botão usando HTML que realmente funciona
 st.markdown("""
 <div class="top-btn-container">
-    <a href="#" class="top-btn" onclick="scrollToTop()">↑</a>
+    <a href="#top" class="top-btn">↑</a>
 </div>
-
-<script>
-function scrollToTop() {
-    window.scrollTo({
-        top: 0,
-        behavior: 'smooth'
-    });
-    return false; // Previne o comportamento padrão do link
-}
-
-// Também adiciona evento de clique via JavaScript para garantir
-document.addEventListener('DOMContentLoaded', function() {
-    const topBtn = document.querySelector('.top-btn');
-    if (topBtn) {
-        topBtn.addEventListener('click', function(e) {
-            e.preventDefault();
-            window.scrollTo({
-                top: 0,
-                behavior: 'smooth'
-            });
-        });
-    }
-});
-</script>
 """, unsafe_allow_html=True)
 
 # Rodapé
 st.markdown("---")
 st.markdown("""
 <div style="text-align: center; color: #666; padding: 1.5rem;">
-    <p style="font-size: 1.1rem; font-weight: 600;">🎯 Transcrição Inteligente - v4.0</p>
+    <p style="font-size: 1.1rem; font-weight: 600;">🎯 Transcrição Inteligente - v4.1</p>
     <p style="color: #999; font-size: 0.9rem;">
         Whisper OpenAI • Processamento em tempo real • Correções automáticas • Interface moderna
     </p>
@@ -1305,4 +1278,3 @@ st.markdown("""
     </p>
 </div>
 """, unsafe_allow_html=True)
-
