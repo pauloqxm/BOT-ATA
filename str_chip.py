@@ -727,6 +727,7 @@ def carregar_modelo_whisper(nome_modelo: str, device: str):
 # Whisper oficial – função principal
 # =============================
 def transcrever_com_whisper(audio, sr, modelo_nome: str, chunk_seg: int):
+    # Detecta acelerador
     acel = detectar_acelerador()
     device = acel.get("device", "cpu")
     engine = acel.get("engine", "cpu")
@@ -765,9 +766,11 @@ def transcrever_com_whisper(audio, sr, modelo_nome: str, chunk_seg: int):
     </div>
     """, unsafe_allow_html=True)
 
+    # Carrega o modelo
     with st.spinner(f"🔧 Carregando modelo Whisper {modelo_efetivo}..."):
         model = carregar_whisper_inteligente(modelo_efetivo, acel)
 
+    # Divide em chunks
     partes = dividir_em_chunks(audio, sr, chunk_seg)
     total_partes = len(partes)
 
@@ -827,18 +830,44 @@ def transcrever_com_whisper(audio, sr, modelo_nome: str, chunk_seg: int):
 
         inicio_parte = time.time()
 
+        # Se o chunk estiver vazio ou praticamente silencioso, pula
+        if parte is None or len(parte) == 0 or float(abs(parte).max()) < 1e-6:
+            st.markdown(f"""
+            <div class="warning-card">
+                <div style="display: flex; align-items: center; justify-content: space-between;">
+                    <div>
+                        <h5 style="margin: 0; color: #856404;">⚠️ Sem áudio detectado</h5>
+                        <p style="margin: 0; color: #856404;">
+                            Parte {idx} não contém áudio transcritível
+                        </p>
+                    </div>
+                    <div class="status-warning">
+                        SEM ÁUDIO
+                    </div>
+                </div>
+            </div>
+            """, unsafe_allow_html=True)
+
+            tempos_partes.append(0.0)
+            progresso = idx / total_partes
+            progress_bar.progress(progresso)
+            percent_text.markdown(f"**{progresso*100:.0f}%**")
+            continue
+
+        # kwargs SIMPLIFICADOS (evita bug interno do Whisper)
         kwargs = {
             "language": "pt",
             "task": "transcribe",
-            "temperature": [0.0, 0.2],
-            "best_of": 5,
             "initial_prompt": BASE_PROMPT,
         }
 
-        # só usa FP16 se for CUDA mesmo
+        # controla FP16 corretamente
         if engine == "cuda" and torch.cuda.is_available() and fp16:
             kwargs["fp16"] = True
+        else:
+            kwargs["fp16"] = False
 
+        # chamada segura
         result = model.transcribe(parte, **kwargs)
 
         tempo_parte = time.time() - inicio_parte
@@ -892,6 +921,7 @@ def transcrever_com_whisper(audio, sr, modelo_nome: str, chunk_seg: int):
 
     tempo_total = time.time() - inicio_geral
     return texto_final, timestamps, tempo_total, duracao_min, total_partes, tempos_partes
+
 
 
 # =============================
