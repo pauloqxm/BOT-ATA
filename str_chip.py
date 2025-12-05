@@ -348,12 +348,22 @@ st.markdown("""
 """, unsafe_allow_html=True)
 
 # =============================
-# Cabeçalho moderno
+# Cabeçalho com imagem personalizada
 # =============================
-st.markdown("""
-<div class="page-header">
-    <h1>🎙️ Transcrição Inteligente</h1>
-    <p>Whisper OpenAI • Processamento Inteligente • Correções Automáticas</p>
+st.markdown(f"""
+<div style="
+    width: 100%;
+    display: flex;
+    justify-content: center;
+    margin-bottom: 2rem;
+">
+    <img src="https://i.ibb.co/6hdSJFc/Gemini-Generated-Image-ueiwonueiwonueiw.png"
+         style="
+             width: 100%;
+             max-width: 1250px;
+             border-radius: 14px;
+             box-shadow: 0 6px 20px rgba(0,0,0,0.15);
+         ">
 </div>
 """, unsafe_allow_html=True)
 
