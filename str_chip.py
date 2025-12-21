@@ -2,7 +2,10 @@
 # PROXY FRONTEND (TEM QUE SER O PRIMEIRO BLOCO DO ARQUIVO)
 # ============================================================
 import os
+import time
 import streamlit as st
+from urllib.parse import quote
+
 
 # Config inicial mínima (antes de imports pesados)
 st.set_page_config(
@@ -14,25 +17,55 @@ st.set_page_config(
 PROXY_HOST = "172.31.136.14"
 PROXY_PORT = "128"
 
-# Mantido igual seu .bat (recomendado mover pra st.secrets depois)
+# Mantido igual seu .bat (ideal mover pra st.secrets depois)
 SAVED_PROXY_USER = "dayana.magalhaes"
 SAVED_PROXY_PASS = "Daniel.2021"
 
 
 def _clear_proxy_env():
-    os.environ.pop("HTTP_PROXY", None)
-    os.environ.pop("HTTPS_PROXY", None)
-    os.environ.pop("http_proxy", None)
-    os.environ.pop("https_proxy", None)
+    for k in ["HTTP_PROXY", "HTTPS_PROXY", "http_proxy", "https_proxy"]:
+        os.environ.pop(k, None)
 
 
-def _set_proxy_env(user: str, password: str, host: str, port: str):
-    # Se tiver caractere especial, ideal é URL-encode, mas vou manter direto como no .bat
+def _set_proxy_env(user: str, password: str, host: str, port: str, url_encode: bool = False):
+    if url_encode:
+        user = quote(user, safe="")
+        password = quote(password, safe="")
     proxy_url = f"http://{user}:{password}@{host}:{port}"
     os.environ["HTTP_PROXY"] = proxy_url
     os.environ["HTTPS_PROXY"] = proxy_url
     os.environ["http_proxy"] = proxy_url
     os.environ["https_proxy"] = proxy_url
+
+
+def _mask_proxy(proxy: str) -> str:
+    if not proxy:
+        return ""
+    # mascara senha
+    # http://user:pass@host:port
+    try:
+        pre, rest = proxy.split("://", 1)
+        creds, host = rest.split("@", 1)
+        if ":" in creds:
+            u, _p = creds.split(":", 1)
+            return f"{pre}://{u}:********@{host}"
+        return proxy
+    except Exception:
+        return proxy
+
+
+def _try_test_connection(timeout_s: int = 4) -> tuple[bool, str]:
+    """
+    Teste simples sem requests: tenta abrir socket no host:port.
+    Serve pra validar rota/proxy reachability.
+    """
+    import socket
+    try:
+        sock = socket.create_connection((PROXY_HOST, int(PROXY_PORT)), timeout=timeout_s)
+        sock.close()
+        return True, "Conexão com o proxy OK (porta acessível)."
+    except Exception as e:
+        return False, f"Falhou ao acessar {PROXY_HOST}:{PROXY_PORT}. Erro: {e}"
 
 
 def _proxy_selector_ui_gate() -> None:
@@ -42,98 +75,224 @@ def _proxy_selector_ui_gate() -> None:
     if "proxy_configured" not in st.session_state:
         st.session_state.proxy_configured = False
 
+    if "proxy_mode" not in st.session_state:
+        st.session_state.proxy_mode = "Sem Proxy"
+
+    if "proxy_encode" not in st.session_state:
+        st.session_state.proxy_encode = False
+
+    if "proxy_last_test" not in st.session_state:
+        st.session_state.proxy_last_test = None  # (ok:bool, msg:str, ts:float)
+
     # Se já configurou proxy, segue o app.
     if st.session_state.proxy_configured:
         return
 
+    # Visual premium
     st.markdown(
         """
         <style>
-        .proxy-wrap {
-            background: rgba(255,255,255,0.72);
-            border: 1px solid rgba(0,0,0,0.08);
-            border-radius: 18px;
-            padding: 18px 18px 10px 18px;
-            box-shadow: 0 10px 30px rgba(0,0,0,0.08);
-            max-width: 1100px;
-            margin: 18px auto;
+        #MainMenu {visibility: hidden;}
+        footer {visibility: hidden;}
+        header {visibility: hidden;}
+
+        .proxy-page {
+            max-width: 1180px;
+            margin: 24px auto;
+            padding: 0 10px;
         }
-        .proxy-title {
-            font-size: 1.4rem;
-            font-weight: 800;
-            margin: 0 0 6px 0;
+
+        .proxy-hero {
+            border-radius: 22px;
+            padding: 26px 26px 20px 26px;
+            background: linear-gradient(135deg, rgba(102,126,234,0.18) 0%, rgba(118,75,162,0.18) 100%);
+            border: 1px solid rgba(0,0,0,0.06);
+            box-shadow: 0 18px 45px rgba(0,0,0,0.08);
         }
-        .proxy-sub {
-            opacity: 0.75;
-            margin: 0 0 14px 0;
+
+        .proxy-hero h1 {
+            margin: 0;
+            font-size: 2.1rem;
+            font-weight: 900;
+            letter-spacing: -0.02em;
         }
-        .pill {
-            display: inline-block;
-            padding: 6px 10px;
+
+        .proxy-hero p {
+            margin: 6px 0 0 0;
+            opacity: 0.85;
+            font-size: 1.05rem;
+        }
+
+        .chips {
+            margin-top: 14px;
+            display: flex;
+            flex-wrap: wrap;
+            gap: 10px;
+        }
+        .chip {
+            display: inline-flex;
+            align-items: center;
+            gap: 8px;
+            padding: 8px 12px;
             border-radius: 999px;
-            background: rgba(0,0,0,0.06);
-            margin-right: 8px;
-            font-size: 0.85rem;
+            background: rgba(255,255,255,0.75);
+            border: 1px solid rgba(0,0,0,0.06);
+            font-size: 0.88rem;
+            box-shadow: 0 6px 18px rgba(0,0,0,0.06);
+        }
+        .chip b { font-weight: 800; }
+
+        .proxy-card {
+            border-radius: 18px;
+            background: rgba(255,255,255,0.78);
+            border: 1px solid rgba(0,0,0,0.06);
+            box-shadow: 0 12px 35px rgba(0,0,0,0.07);
+            padding: 18px;
+        }
+
+        .proxy-card h3 {
+            margin: 0 0 10px 0;
+            font-weight: 900;
+            letter-spacing: -0.01em;
+        }
+
+        .help-box {
+            border-radius: 14px;
+            padding: 14px 14px;
+            background: rgba(23,162,184,0.10);
+            border: 1px solid rgba(23,162,184,0.20);
+        }
+
+        .small-muted { opacity: 0.78; font-size: 0.92rem; }
+
+        /* Melhorar botões */
+        .stButton > button {
+            border-radius: 14px !important;
+            padding: 0.85rem 1rem !important;
+            font-weight: 800 !important;
+            border: 0 !important;
         }
         </style>
         """,
         unsafe_allow_html=True,
     )
 
-    st.markdown('<div class="proxy-wrap">', unsafe_allow_html=True)
-    st.markdown('<div class="proxy-title">🌐 Configurar conexão do app</div>', unsafe_allow_html=True)
+    st.markdown('<div class="proxy-page">', unsafe_allow_html=True)
+
+    # HERO
     st.markdown(
-        '<div class="proxy-sub">Escolha o modo de proxy. Depois disso, a aplicação inicia e carrega o Whisper.</div>',
+        f"""
+        <div class="proxy-hero">
+            <h1>🌐 Conexão do aplicativo</h1>
+            <p>Escolha como o app vai acessar a internet. Depois disso, o Whisper carrega e a transcrição fica pronta pra usar.</p>
+            <div class="chips">
+                <div class="chip">🧩 Host <b>{PROXY_HOST}</b></div>
+                <div class="chip">🔌 Porta <b>{PROXY_PORT}</b></div>
+                <div class="chip">⚙️ Variáveis <b>HTTP_PROXY / HTTPS_PROXY</b></div>
+            </div>
+        </div>
+        """,
         unsafe_allow_html=True,
     )
 
-    col1, col2 = st.columns([1.15, 0.85], gap="large")
+    st.write("")
 
-    with col1:
+    colL, colR = st.columns([1.25, 0.75], gap="large")
+
+    with colL:
+        st.markdown('<div class="proxy-card">', unsafe_allow_html=True)
+        st.markdown("### Modo de proxy")
+
         modo = st.radio(
-            "Modo de proxy",
+            "Selecione um modo",
             ["Sem Proxy", "Proxy Salvo", "Proxy Personalizado"],
-            index=0,
+            index=["Sem Proxy", "Proxy Salvo", "Proxy Personalizado"].index(st.session_state.proxy_mode),
             horizontal=True,
+            label_visibility="collapsed",
         )
+        st.session_state.proxy_mode = modo
 
-        st.markdown(
-            f"""
-            <div style="margin-top:8px;">
-              <span class="pill">Host {PROXY_HOST}</span>
-              <span class="pill">Porta {PROXY_PORT}</span>
-            </div>
-            """,
-            unsafe_allow_html=True,
-        )
+        st.write("")
 
         user = ""
         password = ""
+        if modo == "Sem Proxy":
+            st.info("Sem proxy. Ideal quando sua rede já tem acesso livre.", icon="✅")
 
-        if modo == "Proxy Salvo":
+        elif modo == "Proxy Salvo":
             user = SAVED_PROXY_USER
             password = SAVED_PROXY_PASS
-            st.info("Usando credenciais salvas.", icon="🔒")
+            st.info("Proxy salvo selecionado. Um clique e pronto.", icon="🔒")
 
-        if modo == "Proxy Personalizado":
+        else:
             user = st.text_input("Usuário", placeholder="Seu usuário do proxy", key="proxy_user")
             password = st.text_input("Senha", type="password", placeholder="Sua senha do proxy", key="proxy_pass")
-            st.caption("Dica: se sua senha tem @ ou :, o ideal é URL-encode. Ex: @ vira %40.")
 
-        with st.expander("Ver proxies atuais no ambiente"):
-            st.code(
-                f"HTTP_PROXY={os.environ.get('HTTP_PROXY','')}\nHTTPS_PROXY={os.environ.get('HTTPS_PROXY','')}",
-                language="text",
+            c1, c2 = st.columns([1, 1])
+            with c1:
+                st.session_state.proxy_encode = st.toggle(
+                    "URL-encode na senha",
+                    value=st.session_state.proxy_encode,
+                    help="Liga isso se sua senha tiver @, :, /, #, espaços etc.",
+                )
+            with c2:
+                st.caption("Exemplo: @ vira %40. : vira %3A.")
+
+            st.markdown(
+                '<div class="help-box"><div class="small-muted">Dica: se a senha tiver caracteres especiais, marque “URL-encode”. Evita erro silencioso na autenticação.</div></div>',
+                unsafe_allow_html=True
             )
 
-    with col2:
+        st.write("")
+        with st.expander("Ver proxy atual no ambiente (mascarado)"):
+            hp = _mask_proxy(os.environ.get("HTTP_PROXY", ""))
+            sp = _mask_proxy(os.environ.get("HTTPS_PROXY", ""))
+            st.code(f"HTTP_PROXY={hp}\nHTTPS_PROXY={sp}", language="text")
+
+        st.markdown("</div>", unsafe_allow_html=True)
+
+    with colR:
+        st.markdown('<div class="proxy-card">', unsafe_allow_html=True)
         st.markdown("### Ações")
-        iniciar = st.button("✅ Iniciar aplicação", use_container_width=True)
-        limpar = st.button("🧹 Limpar proxy", use_container_width=True)
+
+        b1, b2 = st.columns(2)
+        with b1:
+            testar = st.button("🧪 Testar proxy", use_container_width=True)
+        with b2:
+            limpar = st.button("🧹 Limpar", use_container_width=True)
 
         if limpar:
             _clear_proxy_env()
+            st.session_state.proxy_last_test = None
             st.warning("Proxy removido do ambiente.", icon="🧹")
+
+        if testar:
+            with st.spinner("Testando conexão com o proxy..."):
+                ok, msg = _try_test_connection()
+                st.session_state.proxy_last_test = (ok, msg, time.time())
+            if ok:
+                st.success(msg, icon="✅")
+            else:
+                st.error(msg, icon="⚠️")
+
+        st.write("")
+
+        iniciar = st.button("✅ Iniciar aplicação", use_container_width=True, type="primary")
+
+        st.write("")
+        last = st.session_state.proxy_last_test
+        if last:
+            ok, msg, ts = last
+            when = time.strftime("%H:%M:%S", time.localtime(ts))
+            if ok:
+                st.success(f"Último teste {when}. {msg}", icon="✅")
+            else:
+                st.warning(f"Último teste {when}. {msg}", icon="⚠️")
+        else:
+            st.caption("Opcional: use “Testar proxy” antes de iniciar.")
+
+        st.write("")
+        st.caption("Ao iniciar, o app trava essa tela e carrega a aplicação principal.")
 
         if iniciar:
             if modo == "Sem Proxy":
@@ -142,20 +301,28 @@ def _proxy_selector_ui_gate() -> None:
                 st.success("Executando sem proxy.", icon="✅")
                 st.rerun()
 
-            if modo == "Proxy Salvo":
-                _set_proxy_env(user, password, PROXY_HOST, PROXY_PORT)
+            elif modo == "Proxy Salvo":
+                _set_proxy_env(user, password, PROXY_HOST, PROXY_PORT, url_encode=False)
                 st.session_state.proxy_configured = True
                 st.success("Proxy salvo aplicado.", icon="✅")
                 st.rerun()
 
-            if modo == "Proxy Personalizado":
+            else:
                 if not user or not password:
                     st.error("Preenche usuário e senha.", icon="⚠️")
                 else:
-                    _set_proxy_env(user, password, PROXY_HOST, PROXY_PORT)
+                    _set_proxy_env(
+                        user,
+                        password,
+                        PROXY_HOST,
+                        PROXY_PORT,
+                        url_encode=bool(st.session_state.proxy_encode),
+                    )
                     st.session_state.proxy_configured = True
                     st.success("Proxy personalizado aplicado.", icon="✅")
                     st.rerun()
+
+        st.markdown("</div>", unsafe_allow_html=True)
 
     st.markdown("</div>", unsafe_allow_html=True)
 
@@ -165,6 +332,7 @@ def _proxy_selector_ui_gate() -> None:
 
 # Gate do proxy: SEMPRE roda antes de tudo
 _proxy_selector_ui_gate()
+
 
 # ============================================================
 # A PARTIR DAQUI PODE CARREGAR O RESTO (IMPORTS PESADOS)
