@@ -58,30 +58,38 @@ def _proxy_selector_ui_gate():
         background-color: #f8fafc;
     }
 
-    /* Container Central */
+    /* Container Central para alinhamento */
     .proxy-container {
         max-width: 850px;
-        margin: auto;
-        padding-top: 2rem;
+        margin: 40px auto;
+        /* padding-top removido aqui para eliminar a barra branca */
+    }
+    
+    /* Cartão Único que engloba tudo */
+    .main-card {
+        border-radius: 24px;
+        overflow: hidden; /* Garante que o conteúdo interno respeite as bordas */
+        box-shadow: 0 20px 50px rgba(0,0,0,0.1);
+        background: white;
     }
 
-    /* Card de Cabeçalho */
-    .hero-section {
+    /* Cabeçalho Azul dentro do cartão */
+    .hero-header {
         background: linear-gradient(135deg, #4f46e5 0%, #7c3aed 100%);
         color: white;
         padding: 40px;
-        border-radius: 24px 24px 0 0;
         text-align: center;
-        box-shadow: 0 10px 25px -5px rgba(79, 70, 229, 0.4);
+        /* Sem bordas arredondadas aqui, o container pai cuida disso */
+        /* Sem margem inferior */
+        margin-bottom: 0;
     }
 
-    /* Card de Configuração */
-    .config-card {
-        background: white;
+    /* Corpo Branco dentro do cartão */
+    .config-body {
         padding: 40px;
-        border-radius: 0 0 24px 24px;
-        border: 1px solid #f1f5f9;
-        box-shadow: 0 20px 50px rgba(0,0,0,0.05);
+        /* Sem borda ou sombra próprias, usa a do container pai */
+        /* Sem margem superior */
+        margin-top: 0;
     }
 
     .badge {
@@ -113,12 +121,6 @@ def _proxy_selector_ui_gate():
         box-shadow: 0 8px 20px rgba(79, 70, 229, 0.3);
     }
     
-    /* Botão Secundário (Teste) */
-    .stButton > button[kind="secondary"] {
-        border-radius: 10px !important;
-        border: 1px solid #e2e8f0 !important;
-    }
-
     .info-box {
         background-color: #f1f5f9;
         border-left: 4px solid #4f46e5;
@@ -131,11 +133,13 @@ def _proxy_selector_ui_gate():
     </style>
     """, unsafe_allow_html=True)
 
+    # Estrutura HTML refatorada para um cartão único
     st.markdown('<div class="proxy-container">', unsafe_allow_html=True)
+    st.markdown('<div class="main-card">', unsafe_allow_html=True)
 
-    # Hero Section
+    # Cabeçalho Azul
     st.markdown(f"""
-    <div class="hero-section">
+    <div class="hero-header">
         <span class="badge">NETWORK SETUP v2.0</span>
         <h1 style="margin: 15px 0 5px 0; font-weight:800; font-size: 2.5rem;">Whisper Intelligence</h1>
         <p style="opacity: 0.9; font-size: 1.1rem;">Configure o gateway de conexão para iniciar a transcrição.</p>
@@ -146,8 +150,8 @@ def _proxy_selector_ui_gate():
     </div>
     """, unsafe_allow_html=True)
 
-    # Config Card
-    st.markdown('<div class="config-card">', unsafe_allow_html=True)
+    # Corpo Branco
+    st.markdown('<div class="config-body">', unsafe_allow_html=True)
     
     col_mode, col_test = st.columns([3, 1])
     with col_mode:
@@ -205,12 +209,11 @@ def _proxy_selector_ui_gate():
         st.balloons()
         st.rerun()
 
-    st.markdown('</div></div>', unsafe_allow_html=True)
+    st.markdown('</div></div></div>', unsafe_allow_html=True) # Fecha config-body, main-card e proxy-container
     st.stop()
 
 # Gatekeeper
 _proxy_selector_ui_gate()
-
 
 # ============================================================
 # A PARTIR DAQUI PODE CARREGAR O RESTO (IMPORTS PESADOS)
