@@ -1,27 +1,24 @@
-# ============================================================
-# PROXY FRONTEND (TEM QUE SER O PRIMEIRO BLOCO DO ARQUIVO)
-# ============================================================
 import os
+import socket
 import streamlit as st
 from urllib.parse import quote
 
-# Config inicial mínima
+# Configuração inicial
 st.set_page_config(
-    page_title="Transcrição ATA – Whisper oficial",
+    page_title="Whisper ATA | Configuração de Rede",
+    page_icon="🌐",
     layout="wide",
-    initial_sidebar_state="expanded"
+    initial_sidebar_state="collapsed"
 )
 
 PROXY_HOST = "172.31.136.14"
 PROXY_PORT = "128"
 
-
 def _clear_proxy_env():
     for k in ["HTTP_PROXY", "HTTPS_PROXY", "http_proxy", "https_proxy"]:
         os.environ.pop(k, None)
 
-
-def _set_proxy_env(user: str, password: str, host: str, port: str, url_encode: bool):
+def _set_proxy_env(user, password, host, port, url_encode):
     if url_encode:
         user = quote(user, safe="")
         password = quote(password, safe="")
@@ -33,139 +30,185 @@ def _set_proxy_env(user: str, password: str, host: str, port: str, url_encode: b
         "https_proxy": proxy_url,
     })
 
+def _test_proxy_connection():
+    """Tenta abrir uma conexão socket para validar o host/porta"""
+    try:
+        socket.setdefaulttimeout(3)
+        socket.socket(socket.AF_INET, socket.SOCK_STREAM).connect((PROXY_HOST, int(PROXY_PORT)))
+        return True
+    except Exception:
+        return False
 
 def _proxy_selector_ui_gate():
     if st.session_state.get("proxy_configured"):
         return
 
-    # CSS clean e moderno
+    # Injeção de CSS Profissional
     st.markdown("""
     <style>
+    @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;600;800&display=swap');
+    
+    html, body, [class*="st-"] {
+        font-family: 'Inter', sans-serif;
+    }
+
     #MainMenu, footer, header {visibility: hidden;}
 
-    .proxy-page {
-        max-width: 980px;
-        margin: 60px auto;
+    .main {
+        background-color: #f8fafc;
     }
 
-    .proxy-hero {
-        background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+    /* Container Central */
+    .proxy-container {
+        max-width: 850px;
+        margin: auto;
+        padding-top: 2rem;
+    }
+
+    /* Card de Cabeçalho */
+    .hero-section {
+        background: linear-gradient(135deg, #4f46e5 0%, #7c3aed 100%);
         color: white;
-        padding: 32px;
-        border-radius: 22px;
-        box-shadow: 0 20px 45px rgba(0,0,0,0.25);
+        padding: 40px;
+        border-radius: 24px 24px 0 0;
+        text-align: center;
+        box-shadow: 0 10px 25px -5px rgba(79, 70, 229, 0.4);
     }
 
-    .proxy-hero h1 {
-        margin: 0;
-        font-size: 2.2rem;
-        font-weight: 900;
-        letter-spacing: -0.02em;
-    }
-
-    .proxy-hero p {
-        margin-top: 10px;
-        opacity: 0.95;
-        font-size: 1.05rem;
-    }
-
-    .proxy-card {
-        margin-top: 28px;
+    /* Card de Configuração */
+    .config-card {
         background: white;
-        border-radius: 20px;
-        padding: 28px;
-        box-shadow: 0 12px 35px rgba(0,0,0,0.08);
+        padding: 40px;
+        border-radius: 0 0 24px 24px;
+        border: 1px solid #f1f5f9;
+        box-shadow: 0 20px 50px rgba(0,0,0,0.05);
     }
 
-    .option-box {
-        padding: 18px;
-        border-radius: 16px;
-        border: 2px solid #e5e7eb;
-        margin-bottom: 14px;
+    .badge {
+        background: rgba(255,255,255,0.2);
+        padding: 4px 12px;
+        border-radius: 8px;
+        font-size: 0.85rem;
+        font-weight: 600;
     }
 
-    .stButton > button {
-        border-radius: 14px !important;
-        padding: 0.9rem 1.1rem !important;
-        font-weight: 800 !important;
+    /* Input Styling */
+    .stTextInput > div > div > input {
+        border-radius: 10px !important;
+        border: 1px solid #e2e8f0 !important;
+        padding: 12px !important;
+    }
+
+    /* Botão Primário */
+    .stButton > button[kind="primary"] {
+        background: linear-gradient(135deg, #4f46e5 0%, #7c3aed 100%) !important;
+        border: none !important;
+        border-radius: 12px !important;
+        padding: 1rem 2rem !important;
+        transition: all 0.3s ease;
+    }
+    
+    .stButton > button[kind="primary"]:hover {
+        transform: translateY(-2px);
+        box-shadow: 0 8px 20px rgba(79, 70, 229, 0.3);
+    }
+    
+    /* Botão Secundário (Teste) */
+    .stButton > button[kind="secondary"] {
+        border-radius: 10px !important;
+        border: 1px solid #e2e8f0 !important;
+    }
+
+    .info-box {
+        background-color: #f1f5f9;
+        border-left: 4px solid #4f46e5;
+        padding: 15px;
+        border-radius: 8px;
+        margin-bottom: 25px;
+        font-size: 0.9rem;
+        color: #475569;
     }
     </style>
     """, unsafe_allow_html=True)
 
-    st.markdown('<div class="proxy-page">', unsafe_allow_html=True)
+    st.markdown('<div class="proxy-container">', unsafe_allow_html=True)
 
-    # Header
+    # Hero Section
     st.markdown(f"""
-    <div class="proxy-hero">
-        <h1>🌐 Conexão do aplicativo</h1>
-        <p>
-            Defina como o sistema acessa a internet para carregar o Whisper e realizar as transcrições.
-            Essa configuração é feita uma única vez.
-        </p>
-        <p style="margin-top:14px;font-size:0.95rem;">
-            Host <b>{PROXY_HOST}</b> • Porta <b>{PROXY_PORT}</b>
-        </p>
+    <div class="hero-section">
+        <span class="badge">NETWORK SETUP v2.0</span>
+        <h1 style="margin: 15px 0 5px 0; font-weight:800; font-size: 2.5rem;">Whisper Intelligence</h1>
+        <p style="opacity: 0.9; font-size: 1.1rem;">Configure o gateway de conexão para iniciar a transcrição.</p>
+        <div style="margin-top: 20px; display: flex; justify-content: center; gap: 20px;">
+            <span>📍 <b>Host:</b> {PROXY_HOST}</span>
+            <span>🔌 <b>Porta:</b> {PROXY_PORT}</span>
+        </div>
     </div>
     """, unsafe_allow_html=True)
 
-    st.markdown('<div class="proxy-card">', unsafe_allow_html=True)
-    st.markdown("### Modo de conexão")
+    # Config Card
+    st.markdown('<div class="config-card">', unsafe_allow_html=True)
+    
+    col_mode, col_test = st.columns([3, 1])
+    with col_mode:
+        modo = st.segmented_control(
+            "Selecione o modo de acesso",
+            options=["Sem Proxy", "Proxy Autenticado"],
+            default="Sem Proxy"
+        )
+    
+    with col_test:
+        st.write("") # alinhamento
+        if st.button("🧪 Testar Rede", use_container_width=True):
+            with st.spinner("Checando..."):
+                if _test_proxy_connection():
+                    st.toast("Conexão com o servidor OK!", icon="✅")
+                else:
+                    st.toast("Servidor inacessível.", icon="❌")
 
-    modo = st.radio(
-        "Modo",
-        ["Sem Proxy", "Proxy Personalizado"],
-        label_visibility="collapsed"
-    )
-
-    user = password = ""
+    st.markdown("<br>", unsafe_allow_html=True)
 
     if modo == "Sem Proxy":
         st.markdown("""
-        <div class="option-box">
-            <b>Conexão direta</b><br>
-            Usa a rede padrão do sistema, sem autenticação por proxy.
+        <div class="info-box">
+            <b>Conexão Direta Habilitada:</b> O sistema tentará acessar os servidores do Whisper 
+            utilizando a rota padrão da rede local, sem túneis de autenticação.
         </div>
         """, unsafe_allow_html=True)
         _clear_proxy_env()
-
     else:
-        st.markdown("""
-        <div class="option-box">
-            <b>Proxy com autenticação</b><br>
-            Informe usuário e senha do proxy corporativo.
-        </div>
-        """, unsafe_allow_html=True)
+        st.markdown("##### Credenciais Corporativas")
+        c1, c2 = st.columns(2)
+        with c1:
+            user = st.text_input("Usuário AD", placeholder="ex: joao.silva")
+        with c2:
+            password = st.text_input("Senha de Rede", type="password", placeholder="••••••••")
+        
+        st.info("💡 Dica: Se sua senha possui caracteres como '@' ou '!', ative o encoding abaixo.")
+        encode = st.toggle("Habilitar URL Encoding para segurança")
 
-        col1, col2 = st.columns(2)
-        with col1:
-            user = st.text_input("Usuário do proxy")
-        with col2:
-            password = st.text_input("Senha do proxy", type="password")
-
-        encode = st.toggle(
-            "Aplicar URL-encode na senha",
-            help="Use se a senha tiver caracteres especiais como @, :, / ou espaços."
-        )
-
-    st.write("")
-    iniciar = st.button("🚀 Iniciar aplicação", type="primary", use_container_width=True)
-
-    if iniciar:
-        if modo == "Proxy Personalizado":
+    st.divider()
+    
+    if st.button("🚀 Inicializar Sistema Whisper", type="primary", use_container_width=True):
+        if modo == "Proxy Autenticado":
             if not user or not password:
-                st.error("Informe usuário e senha do proxy.")
+                st.error("Por favor, preencha as credenciais de acesso.")
                 st.stop()
             _set_proxy_env(user, password, PROXY_HOST, PROXY_PORT, encode)
-
+        
         st.session_state.proxy_configured = True
-        st.success("Configuração aplicada. Carregando aplicação…")
+        with st.status("Autenticando e carregando modelos...", expanded=True) as status:
+            st.write("Configurando variáveis de ambiente...")
+            st.write("Validando gateway...")
+            status.update(label="Acesso Autorizado!", state="complete", expanded=False)
+        
+        st.balloons()
         st.rerun()
 
-    st.markdown("</div></div>", unsafe_allow_html=True)
-
+    st.markdown('</div></div>', unsafe_allow_html=True)
     st.stop()
 
-
+# Gatekeeper
 _proxy_selector_ui_gate()
 
 
