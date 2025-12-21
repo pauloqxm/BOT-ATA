@@ -1,4 +1,175 @@
+# ============================================================
+# PROXY FRONTEND (TEM QUE SER O PRIMEIRO BLOCO DO ARQUIVO)
+# ============================================================
 import os
+import streamlit as st
+
+# Config inicial mínima (antes de imports pesados)
+st.set_page_config(
+    page_title="Transcrição ATA – Whisper oficial",
+    layout="wide",
+    initial_sidebar_state="expanded"
+)
+
+PROXY_HOST = "172.31.136.14"
+PROXY_PORT = "128"
+
+# Mantido igual seu .bat (recomendado mover pra st.secrets depois)
+SAVED_PROXY_USER = "dayana.magalhaes"
+SAVED_PROXY_PASS = "Daniel.2021"
+
+
+def _clear_proxy_env():
+    os.environ.pop("HTTP_PROXY", None)
+    os.environ.pop("HTTPS_PROXY", None)
+    os.environ.pop("http_proxy", None)
+    os.environ.pop("https_proxy", None)
+
+
+def _set_proxy_env(user: str, password: str, host: str, port: str):
+    # Se tiver caractere especial, ideal é URL-encode, mas vou manter direto como no .bat
+    proxy_url = f"http://{user}:{password}@{host}:{port}"
+    os.environ["HTTP_PROXY"] = proxy_url
+    os.environ["HTTPS_PROXY"] = proxy_url
+    os.environ["http_proxy"] = proxy_url
+    os.environ["https_proxy"] = proxy_url
+
+
+def _proxy_selector_ui_gate() -> None:
+    """
+    UI de seleção de proxy. Só libera a aplicação quando proxy estiver definido (ou limpo).
+    """
+    if "proxy_configured" not in st.session_state:
+        st.session_state.proxy_configured = False
+
+    # Se já configurou proxy, segue o app.
+    if st.session_state.proxy_configured:
+        return
+
+    st.markdown(
+        """
+        <style>
+        .proxy-wrap {
+            background: rgba(255,255,255,0.72);
+            border: 1px solid rgba(0,0,0,0.08);
+            border-radius: 18px;
+            padding: 18px 18px 10px 18px;
+            box-shadow: 0 10px 30px rgba(0,0,0,0.08);
+            max-width: 1100px;
+            margin: 18px auto;
+        }
+        .proxy-title {
+            font-size: 1.4rem;
+            font-weight: 800;
+            margin: 0 0 6px 0;
+        }
+        .proxy-sub {
+            opacity: 0.75;
+            margin: 0 0 14px 0;
+        }
+        .pill {
+            display: inline-block;
+            padding: 6px 10px;
+            border-radius: 999px;
+            background: rgba(0,0,0,0.06);
+            margin-right: 8px;
+            font-size: 0.85rem;
+        }
+        </style>
+        """,
+        unsafe_allow_html=True,
+    )
+
+    st.markdown('<div class="proxy-wrap">', unsafe_allow_html=True)
+    st.markdown('<div class="proxy-title">🌐 Configurar conexão do app</div>', unsafe_allow_html=True)
+    st.markdown(
+        '<div class="proxy-sub">Escolha o modo de proxy. Depois disso, a aplicação inicia e carrega o Whisper.</div>',
+        unsafe_allow_html=True,
+    )
+
+    col1, col2 = st.columns([1.15, 0.85], gap="large")
+
+    with col1:
+        modo = st.radio(
+            "Modo de proxy",
+            ["Sem Proxy", "Proxy Salvo", "Proxy Personalizado"],
+            index=0,
+            horizontal=True,
+        )
+
+        st.markdown(
+            f"""
+            <div style="margin-top:8px;">
+              <span class="pill">Host {PROXY_HOST}</span>
+              <span class="pill">Porta {PROXY_PORT}</span>
+            </div>
+            """,
+            unsafe_allow_html=True,
+        )
+
+        user = ""
+        password = ""
+
+        if modo == "Proxy Salvo":
+            user = SAVED_PROXY_USER
+            password = SAVED_PROXY_PASS
+            st.info("Usando credenciais salvas.", icon="🔒")
+
+        if modo == "Proxy Personalizado":
+            user = st.text_input("Usuário", placeholder="Seu usuário do proxy", key="proxy_user")
+            password = st.text_input("Senha", type="password", placeholder="Sua senha do proxy", key="proxy_pass")
+            st.caption("Dica: se sua senha tem @ ou :, o ideal é URL-encode. Ex: @ vira %40.")
+
+        with st.expander("Ver proxies atuais no ambiente"):
+            st.code(
+                f"HTTP_PROXY={os.environ.get('HTTP_PROXY','')}\nHTTPS_PROXY={os.environ.get('HTTPS_PROXY','')}",
+                language="text",
+            )
+
+    with col2:
+        st.markdown("### Ações")
+        iniciar = st.button("✅ Iniciar aplicação", use_container_width=True)
+        limpar = st.button("🧹 Limpar proxy", use_container_width=True)
+
+        if limpar:
+            _clear_proxy_env()
+            st.warning("Proxy removido do ambiente.", icon="🧹")
+
+        if iniciar:
+            if modo == "Sem Proxy":
+                _clear_proxy_env()
+                st.session_state.proxy_configured = True
+                st.success("Executando sem proxy.", icon="✅")
+                st.rerun()
+
+            if modo == "Proxy Salvo":
+                _set_proxy_env(user, password, PROXY_HOST, PROXY_PORT)
+                st.session_state.proxy_configured = True
+                st.success("Proxy salvo aplicado.", icon="✅")
+                st.rerun()
+
+            if modo == "Proxy Personalizado":
+                if not user or not password:
+                    st.error("Preenche usuário e senha.", icon="⚠️")
+                else:
+                    _set_proxy_env(user, password, PROXY_HOST, PROXY_PORT)
+                    st.session_state.proxy_configured = True
+                    st.success("Proxy personalizado aplicado.", icon="✅")
+                    st.rerun()
+
+    st.markdown("</div>", unsafe_allow_html=True)
+
+    # Trava o app aqui. Nada abaixo executa.
+    st.stop()
+
+
+# Gate do proxy: SEMPRE roda antes de tudo
+_proxy_selector_ui_gate()
+
+# ============================================================
+# A PARTIR DAQUI PODE CARREGAR O RESTO (IMPORTS PESADOS)
+# ============================================================
+
 import time
 import warnings
 import tempfile
@@ -7,14 +178,18 @@ from pathlib import Path
 from datetime import datetime
 import re
 import subprocess  # para detectar placa de vídeo via Windows
+import torch
+import psutil
+import platform
+import librosa
+import pandas as pd
+
+# Whisper oficial
+import whisper
 
 os.environ["HF_HUB_DISABLE_SYMLINKS_WARNING"] = "1"
 os.environ["KMP_DUPLICATE_LIB_OK"] = "True"
 warnings.filterwarnings("ignore", message=".*huggingface_hub.*")
-
-import torch
-import psutil
-import platform
 
 # Ajuste de threads para não brigar com o Streamlit
 num_threads = os.cpu_count() or 4
@@ -23,22 +198,6 @@ try:
 except RuntimeError:
     pass
 os.environ["OMP_NUM_THREADS"] = str(num_threads)
-
-import librosa
-import streamlit as st
-import pandas as pd
-
-# Whisper oficial
-import whisper
-
-# =============================
-# Configuração Streamlit com tema moderno
-# =============================
-st.set_page_config(
-    page_title="Transcrição ATA – Whisper oficial",
-    layout="wide",
-    initial_sidebar_state="expanded"
-)
 
 # Anchor para o botão "voltar ao topo"
 st.markdown('<a id="top"></a>', unsafe_allow_html=True)
@@ -537,7 +696,6 @@ def corrigir_pontuacao(texto: str) -> str:
 
 
 def formatar_ata(texto: str) -> str:
-    # Mantida para uso futuro, mas não exposta na UI de pós-processamento
     if not texto:
         return ""
     if not texto.startswith("ATA DA REUNIÃO"):
@@ -664,7 +822,6 @@ def detectar_acelerador():
     - CPU (fallback)
     """
 
-    # 1. CUDA NVIDIA
     if torch.cuda.is_available():
         try:
             nome_gpu = torch.cuda.get_device_name(0)
@@ -677,7 +834,6 @@ def detectar_acelerador():
         except Exception:
             pass
 
-    # 2. OPENVINO (somente se o pacote existir)
     try:
         import openvino  # noqa: F401
         from openvino.runtime import Core
@@ -698,7 +854,6 @@ def detectar_acelerador():
     except Exception:
         pass
 
-    # 3. CPU (fallback)
     return {
         "engine": "cpu",
         "device": "cpu",
@@ -733,11 +888,7 @@ def carregar_modelo_whisper(nome_modelo: str, device: str):
     return whisper.load_model(nome_modelo, device=device)
 
 
-# =============================
-# Whisper oficial – função principal
-# =============================
 def transcrever_com_whisper(audio, sr, modelo_nome: str, chunk_seg: int):
-    # Detecta acelerador
     acel = detectar_acelerador()
     device = acel.get("device", "cpu")
     engine = acel.get("engine", "cpu")
@@ -776,11 +927,9 @@ def transcrever_com_whisper(audio, sr, modelo_nome: str, chunk_seg: int):
     </div>
     """, unsafe_allow_html=True)
 
-    # Carrega o modelo
     with st.spinner(f"🔧 Carregando modelo Whisper {modelo_efetivo}..."):
         model = carregar_whisper_inteligente(modelo_efetivo, acel)
 
-    # Divide em chunks
     partes = dividir_em_chunks(audio, sr, chunk_seg)
     total_partes = len(partes)
 
@@ -840,7 +989,6 @@ def transcrever_com_whisper(audio, sr, modelo_nome: str, chunk_seg: int):
 
         inicio_parte = time.time()
 
-        # Se o chunk estiver vazio ou praticamente silencioso, pula
         if parte is None or len(parte) == 0 or float(abs(parte).max()) < 1e-6:
             st.markdown(f"""
             <div class="warning-card">
@@ -864,20 +1012,17 @@ def transcrever_com_whisper(audio, sr, modelo_nome: str, chunk_seg: int):
             percent_text.markdown(f"**{progresso*100:.0f}%**")
             continue
 
-        # kwargs SIMPLIFICADOS (evita bug interno do Whisper)
         kwargs = {
             "language": "pt",
             "task": "transcribe",
             "initial_prompt": BASE_PROMPT,
         }
 
-        # controla FP16 corretamente
         if engine == "cuda" and torch.cuda.is_available() and fp16:
             kwargs["fp16"] = True
         else:
             kwargs["fp16"] = False
 
-        # chamada segura
         result = model.transcribe(parte, **kwargs)
 
         tempo_parte = time.time() - inicio_parte
@@ -898,7 +1043,7 @@ def transcrever_com_whisper(audio, sr, modelo_nome: str, chunk_seg: int):
                     <div>
                         <h5 style="margin: 0; color: #155724;">✅ Parte {idx} concluída</h5>
                         <p style="margin: 0; color: #0c5460;">
-                            Tempo: {tempo_parte:.1f}s | 
+                            Tempo: {tempo_parte:.1f}s |
                             Trecho: {segs[0]['text'][:100]}...
                         </p>
                     </div>
@@ -933,18 +1078,31 @@ def transcrever_com_whisper(audio, sr, modelo_nome: str, chunk_seg: int):
     return texto_final, timestamps, tempo_total, duracao_min, total_partes, tempos_partes
 
 
-
 # =============================
 # Sidebar – configurações modernas
 # =============================
 with st.sidebar:
     st.markdown("""
-    <div style="padding: 1.5rem; background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); 
+    <div style="padding: 1.5rem; background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
                 color: white; border-radius: 15px; margin-bottom: 2rem;">
         <h3 style="margin: 0;">⚙️ Configurações</h3>
         <p style="margin: 0; opacity: 0.9;">Ajuste os parâmetros de processamento</p>
     </div>
     """, unsafe_allow_html=True)
+
+    st.markdown("### 🌐 Proxy")
+    proxy_atual = os.environ.get("HTTP_PROXY", "") or os.environ.get("http_proxy", "")
+    if proxy_atual:
+        st.success("Proxy ativo no ambiente.", icon="✅")
+        st.code(proxy_atual, language="text")
+    else:
+        st.info("Sem proxy no ambiente.", icon="ℹ️")
+
+    if st.button("🔁 Trocar proxy", use_container_width=True):
+        st.session_state.proxy_configured = False
+        st.rerun()
+
+    st.markdown("---")
 
     st.markdown("### 🎯 Modelo Whisper")
     modelos = {
@@ -1155,7 +1313,6 @@ with tab1:
                 if not texto_corrigido.strip():
                     st.error("❌ Nenhum texto final gerado. Verifique se o áudio tem fala clara.")
                 else:
-                    # salva no histórico
                     hist = st.session_state.get("historico_transcricoes", [])
                     item = {
                         "timestamp": datetime.now().isoformat(),
@@ -1276,6 +1433,7 @@ with tab1:
                     os.unlink(caminho_audio)
                 except Exception:
                     pass
+
 
 # =============================
 # Aba 2 – Biblioteca de correções
@@ -1535,9 +1693,8 @@ with tab4:
             st.session_state["texto_pos_processado"] = item_sel["preview"]
             st.success("✅ Texto carregado. Vá na aba '📝 PÓS-PROCESSAMENTO' para editar.")
 
-
 # Fechar container principal
-st.markdown('</div>', unsafe_allow_html=True)
+st.markdown("</div>", unsafe_allow_html=True)
 
 # =============================
 # Botão para voltar ao início
