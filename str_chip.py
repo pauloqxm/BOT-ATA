@@ -1143,7 +1143,7 @@ with st.sidebar:
     proxy_atual = os.environ.get("HTTP_PROXY", "") or os.environ.get("http_proxy", "")
     if proxy_atual:
         st.success("Proxy ativo no ambiente.", icon="✅")
-        st.code(proxy_atual, language="text")
+        
     else:
         st.info("Sem proxy no ambiente.", icon="ℹ️")
 
