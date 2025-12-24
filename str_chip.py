@@ -5,9 +5,9 @@ from urllib.parse import quote
 
 # Configuração inicial
 st.set_page_config(
-    page_title="Whisper ATA | Configuração de Rede",
-    page_icon="🌐",
-    #layout="wide",
+    page_title="DECIFRAVOZ| Configuração de Rede",
+    page_icon="🗣️",
+    layout="wide",
     initial_sidebar_state="collapsed"
 )
 
@@ -193,7 +193,7 @@ def _proxy_selector_ui_gate():
 
     st.divider()
     
-    if st.button("🚀 Inicializar Sistema Whisper", type="primary", use_container_width=True):
+    if st.button("🚀 Inicializar Sistema DECIFRAVOZ", type="primary", use_container_width=True):
         if modo == "Proxy Autenticado":
             if not user or not password:
                 st.error("Por favor, preencha as credenciais de acesso.")
