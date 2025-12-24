@@ -219,6 +219,7 @@ _proxy_selector_ui_gate()
 # A PARTIR DAQUI PODE CARREGAR O RESTO (IMPORTS PESADOS)
 # ============================================================
 
+import os
 import time
 import warnings
 import tempfile
@@ -226,16 +227,21 @@ import json
 from pathlib import Path
 from datetime import datetime
 import re
-import subprocess  # para detectar placa de vídeo via Windows
+import subprocess
+import platform
+
 import torch
 import psutil
-import platform
 import librosa
 import pandas as pd
+import streamlit as st
 
 # Whisper oficial
 import whisper
 
+# =============================
+# ENV / WARNINGS
+# =============================
 os.environ["HF_HUB_DISABLE_SYMLINKS_WARNING"] = "1"
 os.environ["KMP_DUPLICATE_LIB_OK"] = "True"
 warnings.filterwarnings("ignore", message=".*huggingface_hub.*")
@@ -251,14 +257,17 @@ os.environ["OMP_NUM_THREADS"] = str(num_threads)
 # Anchor para o botão "voltar ao topo"
 st.markdown('<a id="top"></a>', unsafe_allow_html=True)
 
-# CSS personalizado para interface moderna
-st.markdown("""
+# =============================
+# CSS personalizado (com FIX das abas na barra branca)
+# =============================
+st.markdown(
+    """
 <style>
     /* Tema principal */
     .stApp {
         background: linear-gradient(135deg, #f5f7fa 0%, #c3cfe2 100%);
     }
-    
+
     .main-container {
         background: white;
         border-radius: 20px;
@@ -267,7 +276,7 @@ st.markdown("""
         box-shadow: 0 20px 60px rgba(0,0,0,0.1);
         max-width: 95%;
     }
-    
+
     /* Botões modernos */
     .stButton > button {
         background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
@@ -281,30 +290,17 @@ st.markdown("""
         box-shadow: 0 4px 15px rgba(102, 126, 234, 0.3);
         width: 100%;
     }
-    
+
     .stButton > button:hover:not(:disabled) {
         transform: translateY(-2px);
         box-shadow: 0 8px 25px rgba(102, 126, 234, 0.4);
     }
-    
+
     .stButton > button:disabled {
         background: #cccccc;
         box-shadow: none;
     }
-    
-    /* Botões secundários */
-    .secondary-btn {
-        background: linear-gradient(135deg, #6c757d 0%, #495057 100%) !important;
-    }
-    
-    .success-btn {
-        background: linear-gradient(135deg, #28a745 0%, #20c997 100%) !important;
-    }
-    
-    .warning-btn {
-        background: linear-gradient(135deg, #ffc107 0%, #fd7e14 100%) !important;
-    }
-    
+
     /* Uploader estilizado */
     .uploadedFile {
         background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
@@ -314,7 +310,7 @@ st.markdown("""
         margin: 1rem 0;
         box-shadow: 0 5px 20px rgba(102, 126, 234, 0.2);
     }
-    
+
     /* Métricas estilizadas */
     .metric-card {
         background: white;
@@ -325,19 +321,19 @@ st.markdown("""
         margin: 0.5rem 0;
         transition: transform 0.3s ease;
     }
-    
+
     .metric-card:hover {
         transform: translateY(-5px);
         box-shadow: 0 10px 30px rgba(0,0,0,0.1);
     }
-    
+
     .metric-value {
         font-size: 2rem !important;
         font-weight: 700 !important;
         color: #333 !important;
         margin: 0.5rem 0;
     }
-    
+
     .metric-label {
         color: #666 !important;
         font-size: 0.9rem !important;
@@ -345,13 +341,13 @@ st.markdown("""
         letter-spacing: 1px;
         font-weight: 600 !important;
     }
-    
+
     /* Progress bar moderna */
     .stProgress > div > div > div > div {
         background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
         border-radius: 10px;
     }
-    
+
     /* Cards */
     .custom-card {
         background: white;
@@ -361,49 +357,27 @@ st.markdown("""
         margin: 1rem 0;
         border: 1px solid #f0f0f0;
     }
-    
+
     .success-card {
         background: linear-gradient(135deg, #d4edda 0%, #c3e6cb 100%);
         border-left: 5px solid #28a745;
     }
-    
+
     .warning-card {
         background: linear-gradient(135deg, #fff3cd 0%, #ffeaa7 100%);
         border-left: 5px solid #ffc107;
     }
-    
+
     .error-card {
         background: linear-gradient(135deg, #f8d7da 0%, #f5c6cb 100%);
         border-left: 5px solid #dc3545;
     }
-    
+
     .info-card {
         background: linear-gradient(135deg, #d1ecf1 0%, #bee5eb 100%);
         border-left: 5px solid #17a2b8;
     }
-    
-    /* Tabs estilizadas */
-    .stTabs [data-baseweb="tab-list"] {
-        gap: 2rem;
-        background: transparent;
-        border-bottom: 2px solid #f0f0f0;
-    }
-    
-    .stTabs [data-baseweb="tab"] {
-        background: transparent;
-        border-radius: 10px 10px 0 0;
-        padding: 0.75rem 1.5rem;
-        font-weight: 600;
-        color: #666;
-        transition: all 0.3s ease;
-    }
-    
-    .stTabs [aria-selected="true"] {
-        background: linear-gradient(135deg, #667eea 0%, #764ba2 100%) !important;
-        color: white !important;
-        box-shadow: 0 4px 15px rgba(102, 126, 234, 0.3);
-    }
-    
+
     /* Timestamps */
     .timestamp-item {
         background: linear-gradient(135deg, #ffffff 0%, #f8f9fa 100%);
@@ -414,12 +388,12 @@ st.markdown("""
         box-shadow: 0 2px 5px rgba(0,0,0,0.05);
         transition: all 0.3s ease;
     }
-    
+
     .timestamp-item:hover {
         transform: translateX(5px);
         box-shadow: 0 5px 15px rgba(0,0,0,0.1);
     }
-    
+
     /* Texto prévia */
     .text-preview {
         background: #f8f9fa;
@@ -431,36 +405,7 @@ st.markdown("""
         max-height: 300px;
         overflow-y: auto;
     }
-    
-    /* Editor de texto */
-    .text-editor {
-        background: white;
-        padding: 1.5rem;
-        border-radius: 10px;
-        border: 2px solid #e9ecef;
-        font-family: 'Arial', sans-serif;
-        line-height: 1.8;
-        min-height: 400px;
-        max-height: 600px;
-        overflow-y: auto;
-        white-space: pre-wrap;
-        word-wrap: break-word;
-    }
-    
-    .text-editor:focus {
-        border-color: #667eea;
-        box-shadow: 0 0 0 3px rgba(102, 126, 234, 0.2);
-    }
-    
-    /* Parágrafos */
-    .paragraph {
-        margin-bottom: 1.5rem;
-        padding: 1rem;
-        border-left: 4px solid #28a745;
-        background: linear-gradient(135deg, #f8fff9 0%, #f0fdf4 100%);
-        border-radius: 8px;
-    }
-    
+
     /* Status indicators */
     .status-processing {
         background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
@@ -471,7 +416,7 @@ st.markdown("""
         display: inline-block;
         animation: pulse 2s infinite;
     }
-    
+
     .status-success {
         background: linear-gradient(135deg, #28a745 0%, #20c997 100%);
         color: white;
@@ -480,7 +425,7 @@ st.markdown("""
         font-size: 0.9rem;
         display: inline-block;
     }
-    
+
     .status-warning {
         background: linear-gradient(135deg, #ffc107 0%, #fd7e14 100%);
         color: white;
@@ -489,36 +434,13 @@ st.markdown("""
         font-size: 0.9rem;
         display: inline-block;
     }
-    
+
     @keyframes pulse {
         0% { opacity: 1; }
         50% { opacity: 0.7; }
         100% { opacity: 1; }
     }
-    
-    /* Header */
-    .page-header {
-        text-align: center;
-        padding: 2rem;
-        background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-        border-radius: 20px;
-        margin-bottom: 2rem;
-        color: white;
-        box-shadow: 0 10px 30px rgba(102, 126, 234, 0.3);
-    }
-    
-    .page-header h1 {
-        margin: 0;
-        font-size: 2.5rem;
-        font-weight: 700;
-    }
-    
-    .page-header p {
-        margin: 0.5rem 0 0 0;
-        opacity: 0.9;
-        font-size: 1.1rem;
-    }
-    
+
     /* Botão voltar ao início */
     .top-btn-container {
         position: fixed;
@@ -526,7 +448,7 @@ st.markdown("""
         right: 20px;
         z-index: 1000;
     }
-    
+
     .top-btn {
         background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
         color: white;
@@ -543,22 +465,70 @@ st.markdown("""
         justify-content: center;
         text-decoration: none;
     }
-    
+
     .top-btn:hover {
         transform: translateY(-3px);
         box-shadow: 0 8px 25px rgba(102, 126, 234, 0.4);
     }
-    
+
     .main-content {
         margin-bottom: 80px;
     }
+
+    /* =============================
+       FIX: Abas dentro da barra branca
+       ============================= */
+    .stTabs [data-baseweb="tab-list"] {
+        background: #ffffff !important;
+        padding: 10px 12px !important;
+        border-radius: 14px !important;
+        box-shadow: 0 10px 25px rgba(0,0,0,0.08) !important;
+        border: 1px solid rgba(0,0,0,0.06) !important;
+
+        gap: 10px !important;
+        display: flex !important;
+        align-items: center !important;
+
+        width: 100% !important;
+        margin: 0 0 18px 0 !important;
+
+        border-bottom: none !important;
+        position: relative !important;
+        top: 0 !important;
+    }
+
+    .stTabs [data-baseweb="tab"] {
+        background: transparent !important;
+        border-radius: 12px !important;
+        padding: 10px 14px !important;
+        margin: 0 !important;
+
+        font-weight: 700 !important;
+        color: #4b5563 !important;
+
+        /* evita “sair” da barra em alguns temas */
+        line-height: 1 !important;
+    }
+
+    .stTabs [aria-selected="true"] {
+        background: linear-gradient(135deg, #667eea 0%, #764ba2 100%) !important;
+        color: #ffffff !important;
+        box-shadow: 0 8px 18px rgba(102,126,234,0.25) !important;
+    }
+
+    .stTabs {
+        overflow: visible !important;
+    }
 </style>
-""", unsafe_allow_html=True)
+""",
+    unsafe_allow_html=True,
+)
 
 # =============================
-# Cabeçalho com imagem personalizada
+# Cabeçalho com imagem
 # =============================
-st.markdown(f"""
+st.markdown(
+    """
 <div style="
     width: 100%;
     display: flex;
@@ -573,7 +543,9 @@ st.markdown(f"""
              box-shadow: 0 6px 20px rgba(0,0,0,0.15);
          ">
 </div>
-""", unsafe_allow_html=True)
+""",
+    unsafe_allow_html=True,
+)
 
 # Container principal
 st.markdown('<div class="main-container main-content">', unsafe_allow_html=True)
@@ -676,6 +648,7 @@ def get_correcoes_dicionario():
         "qd": "quando",
         "qq": "qualquer",
     }
+
     raw_custom = st.session_state.get("correcoes_custom", {})
     correcoes_custom = {}
     for k, v in raw_custom.items():
@@ -690,22 +663,47 @@ def get_correcoes_dicionario():
     return correcoes
 
 
-def pos_processar_texto(texto: str) -> str:
+def pos_processar_texto(texto: str):
+    """
+    Aplica biblioteca de correções (base + custom) no texto.
+    Retorna (texto_corrigido, total_substituicoes).
+
+    Regras:
+    - aplica chaves maiores primeiro (evita conflito tipo q vs qq)
+    - palavra normal: \\b palavra inteira
+    - termo com símbolo: borda por não-\\w
+    """
     if not texto:
-        return ""
+        return "", 0
+
     correcoes = get_correcoes_dicionario()
-    texto = re.sub(r"\s+", " ", texto)
-    for errado, correto in correcoes.items():
-        padrao = r"\b{}\b".format(re.escape(errado))
-        texto = re.sub(padrao, correto, texto, flags=re.IGNORECASE)
+    texto = re.sub(r"\s+", " ", texto).strip()
+
+    itens = sorted(correcoes.items(), key=lambda kv: len(str(kv[0])), reverse=True)
+
+    total_subs = 0
+    for errado, correto in itens:
+        errado = str(errado).strip()
+        correto = str(correto).strip()
+        if not errado:
+            continue
+
+        if re.fullmatch(r"[0-9A-Za-zÀ-ÖØ-öø-ÿ_]+", errado):
+            padrao = rf"\b{re.escape(errado)}\b"
+        else:
+            padrao = rf"(?<!\w){re.escape(errado)}(?!\w)"
+
+        texto, n = re.subn(padrao, correto, texto, flags=re.IGNORECASE)
+        total_subs += n
+
     texto = re.sub(r"\s+([.,!?])", r"\1", texto)
-    return texto.strip()
+    return texto.strip(), total_subs
 
 
 def organizar_paragrafos(texto: str, max_caracteres=500) -> str:
     if not texto:
         return ""
-    frases = re.split(r'(?<!\w\.\w.)(?<![A-Z][a-z]\.)(?<=\.|\?|\!)\s+', texto)
+    frases = re.split(r"(?<!\w\.\w.)(?<![A-Z][a-z]\.)(?<=\.|\?|\!)\s+", texto)
     paragrafos = []
     paragrafo_atual = ""
     for frase in frases:
@@ -723,7 +721,7 @@ def organizar_paragrafos(texto: str, max_caracteres=500) -> str:
 def capitalizar_frases(texto: str) -> str:
     if not texto:
         return ""
-    frases = re.split(r'(?<=[.!?])\s+', texto)
+    frases = re.split(r"(?<=[.!?])\s+", texto)
     frases_capitalizadas = []
     for frase in frases:
         if frase:
@@ -731,28 +729,17 @@ def capitalizar_frases(texto: str) -> str:
             if frase:
                 frase = frase[0].upper() + frase[1:]
                 frases_capitalizadas.append(frase)
-    return ' '.join(frases_capitalizadas)
+    return " ".join(frases_capitalizadas)
 
 
 def corrigir_pontuacao(texto: str) -> str:
     if not texto:
         return ""
-    texto = re.sub(r'\s+([.,!?:;])', r'\1', texto)
-    texto = re.sub(r'([.,!?:;])(?!\s|$)', r'\1 ', texto)
-    texto = re.sub(r'([.,!?:;]){2,}', r'\1', texto)
-    texto = re.sub(r'\s+', ' ', texto)
+    texto = re.sub(r"\s+([.,!?:;])", r"\1", texto)
+    texto = re.sub(r"([.,!?:;])(?!\s|$)", r"\1 ", texto)
+    texto = re.sub(r"([.,!?:;]){2,}", r"\1", texto)
+    texto = re.sub(r"\s+", " ", texto)
     return texto.strip()
-
-
-def formatar_ata(texto: str) -> str:
-    if not texto:
-        return ""
-    if not texto.startswith("ATA DA REUNIÃO"):
-        data_atual = datetime.now().strftime("%d/%m/%Y")
-        texto = f"ATA DA REUNIÃO\nData: {data_atual}\n\n{texto}"
-    if "Encerramento" not in texto and "FIM DA ATA" not in texto:
-        texto += "\n\n---\nFIM DA ATA\n"
-    return texto
 
 
 def dividir_em_chunks(audio, sr, chunk_seg=120):
@@ -776,11 +763,11 @@ def formatar_tempo(segundos: float) -> str:
 def formatar_timestamps(timestamps, max_chars=400):
     linhas = []
     for ts in timestamps:
-        texto = ts['text']
+        texto = ts["text"]
         if len(texto) > max_chars:
             texto = texto[:max_chars] + "..."
-        inicio = formatar_tempo(ts['start'])
-        fim = formatar_tempo(ts['end'])
+        inicio = formatar_tempo(ts["start"])
+        fim = formatar_tempo(ts["end"])
         linhas.append(f"<div class='timestamp-item'><b>[{inicio} - {fim}]</b> {texto}</div>")
     return "\n".join(linhas)
 
@@ -796,7 +783,7 @@ def detectar_npu(cpu_name: str):
     tem_npu = False
     descricao = "Não identificado"
 
-    if "core ultra" in cpu_lower or "ultra 5" in cpu_lower or "ultra 7" in cpu_lower or "ultra 9" in cpu_lower:
+    if ("core ultra" in cpu_lower) or ("ultra 5" in cpu_lower) or ("ultra 7" in cpu_lower) or ("ultra 9" in cpu_lower):
         tem_npu = True
         descricao = "Intel NPU (linha Core Ultra)"
     elif "snapdragon" in cpu_lower or "qualcomm" in cpu_lower:
@@ -826,13 +813,9 @@ def detectar_gpu_e_placa_video():
                 ["wmic", "path", "win32_VideoController", "get", "Name"],
                 capture_output=True,
                 text=True,
-                creationflags=creationflags
+                creationflags=creationflags,
             )
-            linhas = [
-                l.strip()
-                for l in result.stdout.splitlines()
-                if l.strip() and "Name" not in l
-            ]
+            linhas = [l.strip() for l in result.stdout.splitlines() if l.strip() and "Name" not in l]
             if linhas:
                 placas_video.extend(linhas)
 
@@ -841,16 +824,11 @@ def detectar_gpu_e_placa_video():
                     ["powershell", "-Command", "Get-CimInstance Win32_VideoController | Select-Object -ExpandProperty Name"],
                     capture_output=True,
                     text=True,
-                    creationflags=creationflags
+                    creationflags=creationflags,
                 )
-                ps_lines = [
-                    l.strip()
-                    for l in result_ps.stdout.splitlines()
-                    if l.strip()
-                ]
+                ps_lines = [l.strip() for l in result_ps.stdout.splitlines() if l.strip()]
                 if ps_lines:
                     placas_video.extend(ps_lines)
-
     except Exception:
         pass
 
@@ -864,22 +842,10 @@ def detectar_gpu_e_placa_video():
 # ACELERAÇÃO AUTOMÁTICA UNIVERSAL
 # =============================
 def detectar_acelerador():
-    """
-    Detecta automaticamente o melhor acelerador disponível:
-    - CUDA (NVIDIA)
-    - OpenVINO (Intel CPU / Intel GPU / NPU), se estiver instalado
-    - CPU (fallback)
-    """
-
     if torch.cuda.is_available():
         try:
             nome_gpu = torch.cuda.get_device_name(0)
-            return {
-                "engine": "cuda",
-                "device": "cuda",
-                "name": nome_gpu,
-                "fp16": True
-            }
+            return {"engine": "cuda", "device": "cuda", "name": nome_gpu, "fp16": True}
         except Exception:
             pass
 
@@ -894,21 +860,11 @@ def detectar_acelerador():
         for preferido in prioridade:
             for disp in dispositivos:
                 if preferido in disp:
-                    return {
-                        "engine": "openvino",
-                        "device": disp,
-                        "name": disp,
-                        "fp16": False
-                    }
+                    return {"engine": "openvino", "device": disp, "name": disp, "fp16": False}
     except Exception:
         pass
 
-    return {
-        "engine": "cpu",
-        "device": "cpu",
-        "name": "Processamento via CPU",
-        "fp16": False
-    }
+    return {"engine": "cpu", "device": "cpu", "name": "Processamento via CPU", "fp16": False}
 
 
 @st.cache_resource(show_spinner=True)
@@ -932,82 +888,85 @@ def carregar_whisper_inteligente(modelo_nome, acelerador):
     return whisper.load_model(modelo_nome, device="cpu")
 
 
-@st.cache_resource(show_spinner=True)
-def carregar_modelo_whisper(nome_modelo: str, device: str):
-    return whisper.load_model(nome_modelo, device=device)
-
-
 def transcrever_com_whisper(audio, sr, modelo_nome: str, chunk_seg: int):
     acel = detectar_acelerador()
-    device = acel.get("device", "cpu")
     engine = acel.get("engine", "cpu")
     fp16 = acel.get("fp16", False)
-    device_name = acel.get("name", str(device))
+    device_name = acel.get("name", "cpu")
 
-    device_msg = f"Acelerador detectado: {device_name} ({engine})"
-
-    st.markdown(f"""
-    <div class="info-card">
-        <div style="display: flex; align-items: center; gap: 1rem;">
-            <div style="font-size: 2rem;">⚙️</div>
-            <div>
-                <h4 style="margin: 0;">Configuração do Sistema</h4>
-                <p style="margin: 0;">{device_msg}</p>
+    st.markdown(
+        f"""
+        <div class="info-card">
+            <div style="display: flex; align-items: center; gap: 1rem;">
+                <div style="font-size: 2rem;">⚙️</div>
+                <div>
+                    <h4 style="margin: 0;">Configuração do Sistema</h4>
+                    <p style="margin: 0;">Acelerador detectado: {device_name} ({engine})</p>
+                </div>
             </div>
         </div>
-    </div>
-    """, unsafe_allow_html=True)
+        """,
+        unsafe_allow_html=True,
+    )
 
     duracao_min = len(audio) / sr / 60
-    modelo_efetivo = modelo_nome
-    engine_label = str(engine).upper()
 
-    st.markdown(f"""
-    <div class="custom-card">
-        <div style="display: flex; align-items: center; justify-content: space-between;">
-            <div>
-                <h3 style="margin: 0;">🎯 Modelo Selecionado</h3>
-                <p style="margin: 0; color: #666;">{modelo_efetivo.upper()} em {engine_label}</p>
-            </div>
-            <div class="status-processing">
-                PRONTO PARA PROCESSAR
+    st.markdown(
+        f"""
+        <div class="custom-card">
+            <div style="display: flex; align-items: center; justify-content: space-between;">
+                <div>
+                    <h3 style="margin: 0;">🎯 Modelo Selecionado</h3>
+                    <p style="margin: 0; color: #666;">{modelo_nome.upper()} em {str(engine).upper()}</p>
+                </div>
+                <div class="status-processing">PRONTO PARA PROCESSAR</div>
             </div>
         </div>
-    </div>
-    """, unsafe_allow_html=True)
+        """,
+        unsafe_allow_html=True,
+    )
 
-    with st.spinner(f"🔧 Carregando modelo Whisper {modelo_efetivo}..."):
-        model = carregar_whisper_inteligente(modelo_efetivo, acel)
+    with st.spinner(f"🔧 Carregando modelo Whisper {modelo_nome}..."):
+        model = carregar_whisper_inteligente(modelo_nome, acel)
 
     partes = dividir_em_chunks(audio, sr, chunk_seg)
     total_partes = len(partes)
 
     col1, col2, col3 = st.columns(3)
     with col1:
-        st.markdown(f"""
-        <div class="metric-card">
-            <div class="metric-label">Partes para processar</div>
-            <div class="metric-value">{total_partes}</div>
-        </div>
-        """, unsafe_allow_html=True)
+        st.markdown(
+            f"""
+            <div class="metric-card">
+                <div class="metric-label">Partes para processar</div>
+                <div class="metric-value">{total_partes}</div>
+            </div>
+            """,
+            unsafe_allow_html=True,
+        )
     with col2:
-        st.markdown(f"""
-        <div class="metric-card">
-            <div class="metric-label">Duração total</div>
-            <div class="metric-value">{formatar_tempo(duracao_min * 60)}</div>
-        </div>
-        """, unsafe_allow_html=True)
+        st.markdown(
+            f"""
+            <div class="metric-card">
+                <div class="metric-label">Duração total</div>
+                <div class="metric-value">{formatar_tempo(duracao_min * 60)}</div>
+            </div>
+            """,
+            unsafe_allow_html=True,
+        )
     with col3:
-        st.markdown(f"""
-        <div class="metric-card">
-            <div class="metric-label">Tamanho do chunk</div>
-            <div class="metric-value">{chunk_seg}s</div>
-        </div>
-        """, unsafe_allow_html=True)
+        st.markdown(
+            f"""
+            <div class="metric-card">
+                <div class="metric-label">Tamanho do chunk</div>
+                <div class="metric-value">{chunk_seg}s</div>
+            </div>
+            """,
+            unsafe_allow_html=True,
+        )
 
     st.markdown("### 📊 Progresso da Transcrição")
     progress_bar = st.progress(0)
-    progress_col1, progress_col2 = st.columns([4, 1])
+    _, progress_col2 = st.columns([4, 1])
     with progress_col2:
         percent_text = st.empty()
 
@@ -1020,53 +979,31 @@ def transcrever_com_whisper(audio, sr, modelo_nome: str, chunk_seg: int):
         janela_min = t_ini / 60
         janela_max = t_fim / 60
 
-        st.markdown(f"""
-        <div class="custom-card">
-            <div style="display: flex; align-items: center; justify-content: space-between;">
-                <div>
-                    <h4 style="margin: 0;">📝 Parte {idx}/{total_partes}</h4>
-                    <p style="margin: 0; color: #666;">
-                        Janela: {janela_min:.1f}min - {janela_max:.1f}min
-                    </p>
-                </div>
-                <div class="status-processing">
-                    PROCESSANDO...
+        st.markdown(
+            f"""
+            <div class="custom-card">
+                <div style="display: flex; align-items: center; justify-content: space-between;">
+                    <div>
+                        <h4 style="margin: 0;">📝 Parte {idx}/{total_partes}</h4>
+                        <p style="margin: 0; color: #666;">Janela: {janela_min:.1f}min - {janela_max:.1f}min</p>
+                    </div>
+                    <div class="status-processing">PROCESSANDO...</div>
                 </div>
             </div>
-        </div>
-        """, unsafe_allow_html=True)
+            """,
+            unsafe_allow_html=True,
+        )
 
         inicio_parte = time.time()
 
         if parte is None or len(parte) == 0 or float(abs(parte).max()) < 1e-6:
-            st.markdown(f"""
-            <div class="warning-card">
-                <div style="display: flex; align-items: center; justify-content: space-between;">
-                    <div>
-                        <h5 style="margin: 0; color: #856404;">⚠️ Sem áudio detectado</h5>
-                        <p style="margin: 0; color: #856404;">
-                            Parte {idx} não contém áudio transcritível
-                        </p>
-                    </div>
-                    <div class="status-warning">
-                        SEM ÁUDIO
-                    </div>
-                </div>
-            </div>
-            """, unsafe_allow_html=True)
-
             tempos_partes.append(0.0)
             progresso = idx / total_partes
             progress_bar.progress(progresso)
             percent_text.markdown(f"**{progresso*100:.0f}%**")
             continue
 
-        kwargs = {
-            "language": "pt",
-            "task": "transcribe",
-            "initial_prompt": BASE_PROMPT,
-        }
-
+        kwargs = {"language": "pt", "task": "transcribe", "initial_prompt": BASE_PROMPT}
         if engine == "cuda" and torch.cuda.is_available() and fp16:
             kwargs["fp16"] = True
         else:
@@ -1086,39 +1023,6 @@ def transcrever_com_whisper(audio, sr, modelo_nome: str, chunk_seg: int):
                 timestamps.append({"start": start, "end": end, "text": texto})
                 texto_final += texto + " "
 
-            st.markdown(f"""
-            <div class="success-card">
-                <div style="display: flex; align-items: center; justify-content: space-between;">
-                    <div>
-                        <h5 style="margin: 0; color: #155724;">✅ Parte {idx} concluída</h5>
-                        <p style="margin: 0; color: #0c5460;">
-                            Tempo: {tempo_parte:.1f}s |
-                            Trecho: {segs[0]['text'][:100]}...
-                        </p>
-                    </div>
-                    <div class="status-success">
-                        CONCLUÍDO
-                    </div>
-                </div>
-            </div>
-            """, unsafe_allow_html=True)
-        else:
-            st.markdown(f"""
-            <div class="warning-card">
-                <div style="display: flex; align-items: center; justify-content: space-between;">
-                    <div>
-                        <h5 style="margin: 0; color: #856404;">⚠️ Sem áudio detectado</h5>
-                        <p style="margin: 0; color: #856404;">
-                            Parte {idx} não contém áudio transcritível
-                        </p>
-                    </div>
-                    <div class="status-warning">
-                        SEM ÁUDIO
-                    </div>
-                </div>
-            </div>
-            """, unsafe_allow_html=True)
-
         progresso = idx / total_partes
         progress_bar.progress(progresso)
         percent_text.markdown(f"**{progresso*100:.0f}%**")
@@ -1128,22 +1032,24 @@ def transcrever_com_whisper(audio, sr, modelo_nome: str, chunk_seg: int):
 
 
 # =============================
-# Sidebar – configurações modernas
+# Sidebar
 # =============================
 with st.sidebar:
-    st.markdown("""
-    <div style="padding: 1.5rem; background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-                color: white; border-radius: 15px; margin-bottom: 2rem;">
-        <h3 style="margin: 0;">⚙️ Configurações</h3>
-        <p style="margin: 0; opacity: 0.9;">Ajuste os parâmetros de processamento</p>
-    </div>
-    """, unsafe_allow_html=True)
+    st.markdown(
+        """
+        <div style="padding: 1.5rem; background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+                    color: white; border-radius: 15px; margin-bottom: 2rem;">
+            <h3 style="margin: 0;">⚙️ Configurações</h3>
+            <p style="margin: 0; opacity: 0.9;">Ajuste os parâmetros de processamento</p>
+        </div>
+        """,
+        unsafe_allow_html=True,
+    )
 
     st.markdown("### 🌐 Proxy")
     proxy_atual = os.environ.get("HTTP_PROXY", "") or os.environ.get("http_proxy", "")
     if proxy_atual:
         st.success("Proxy ativo no ambiente.", icon="✅")
-        
     else:
         st.info("Sem proxy no ambiente.", icon="ℹ️")
 
@@ -1161,11 +1067,7 @@ with st.sidebar:
         "🏆 medium – qualidade premium": "medium",
         "👑 large-v3 – excelência máxima": "large-v3",
     }
-    modelo_label = st.selectbox(
-        "Selecione o modelo:",
-        list(modelos.keys()),
-        index=1
-    )
+    modelo_label = st.selectbox("Selecione o modelo:", list(modelos.keys()), index=1)
     modelo_whisper = modelos[modelo_label]
 
     st.markdown("---")
@@ -1177,7 +1079,7 @@ with st.sidebar:
         max_value=300,
         value=120,
         step=30,
-        help="Partes menores = mais preciso\nPartes maiores = mais rápido"
+        help="Partes menores = mais preciso\nPartes maiores = mais rápido",
     )
 
     st.markdown("---")
@@ -1185,7 +1087,7 @@ with st.sidebar:
 
     try:
         cpu_info = platform.processor()
-        if not cpu_info or cpu_info == "":
+        if not cpu_info:
             cpu_info = "Processador não identificado"
     except Exception:
         cpu_info = "Processador não identificado"
@@ -1211,23 +1113,10 @@ with st.sidebar:
         st.write(f"**RAM Disponível:** {mem.available / (1024**3):.1f} GB")
 
         tem_npu, desc_npu = detectar_npu(cpu_info)
-        if tem_npu:
-            st.write(f"**NPU:** {desc_npu}")
-        else:
-            st.write("**NPU:** não detectada")
+        st.write(f"**NPU:** {desc_npu if tem_npu else 'não detectada'}")
 
         gpu_cuda, placas_video = detectar_gpu_e_placa_video()
-
-        if gpu_cuda:
-            st.write(f"**GPU (CUDA):** {gpu_cuda}")
-            try:
-                vram_total = torch.cuda.get_device_properties(0).total_memory / (1024**3)
-                st.write(f"**VRAM Total:** {vram_total:.1f} GB")
-            except Exception:
-                pass
-        else:
-            st.write("**GPU (CUDA):** não detectada")
-
+        st.write(f"**GPU (CUDA):** {gpu_cuda if gpu_cuda else 'não detectada'}")
         st.markdown("**Placa(s) de vídeo detectada(s):**")
         for nome in placas_video:
             st.write(f"• {nome}")
@@ -1236,47 +1125,57 @@ with st.sidebar:
 # =============================
 # Abas principais
 # =============================
-tab1, tab2, tab3, tab4 = st.tabs([
-    "🎧 TRANSCREVER ÁUDIO",
-    "📚 BIBLIOTECA DE CORREÇÕES",
-    "📝 PÓS-PROCESSAMENTO",
-    "📊 HISTÓRICO"
-])
+tab1, tab2, tab3, tab4 = st.tabs(
+    [
+        "🎧 TRANSCREVER ÁUDIO",
+        "📚 BIBLIOTECA DE CORREÇÕES",
+        "📝 PÓS-PROCESSAMENTO",
+        "📊 HISTÓRICO",
+    ]
+)
 
 # =============================
 # Aba 1 – Transcrição
 # =============================
 with tab1:
-    st.markdown("""
-    <div style="text-align: center; margin-bottom: 2rem;">
-        <h2>🎤 Envie seu Áudio</h2>
-        <p style="color: #666;">Suporta MP3, WAV, M4A, OGG, FLAC, AAC, WMA</p>
-    </div>
-    """, unsafe_allow_html=True)
+    st.markdown(
+        """
+        <div style="text-align: center; margin-bottom: 2rem;">
+            <h2>🎤 Envie seu Áudio</h2>
+            <p style="color: #666;">Suporta MP3, WAV, M4A, OGG, FLAC, AAC, WMA</p>
+        </div>
+        """,
+        unsafe_allow_html=True,
+    )
 
     audio_file = st.file_uploader(
         "Faça o upload do áudio",
         type=["mp3", "wav", "m4a", "ogg", "flac", "aac", "wma"],
         label_visibility="visible",
-        key="audio_uploader_tab1"
+        key="audio_uploader_tab1",
     )
 
     if audio_file is not None:
         tamanho_mb = audio_file.size / 1024 / 1024
-        st.markdown(f"""
-        <div class="uploadedFile">
-            <div style="display: flex; align-items: center; justify-content: space-between;">
-                <div style="flex: 1;">
-                    <h4 style="margin: 0;">✅ {audio_file.name}</h4>
-                    <p style="margin: 0; opacity: 0.9;">Arquivo pronto para transcrição</p>
-                </div>
-                <div style="text-align: right;">
-                    <div style="font-size: 2rem; margin-bottom: 0.5rem;">📁</div>
-                    <h3 style="margin: 0;">{tamanho_mb:.1f} MB</h3>
+        st.markdown(
+            f"""
+            <div class="uploadedFile">
+                <div style="display: flex; align-items: center; justify-content: space-between;">
+                    <div style="flex: 1;">
+                        <h4 style="margin: 0;">✅ {audio_file.name}</h4>
+                        <p style="margin: 0; opacity: 0.9;">Arquivo pronto para transcrição</p>
+                    </div>
+                    <div style="text-align: right;">
+                        <div style="font-size: 2rem; margin-bottom: 0.5rem;">📁</div>
+                        <h3 style="margin: 0;">{tamanho_mb:.1f} MB</h3>
+                    </div>
                 </div>
             </div>
-        </div>
-        """, unsafe_allow_html=True)
+            """,
+            unsafe_allow_html=True,
+        )
+    else:
+        tamanho_mb = 0.0
 
     col_btn1, col_btn2, col_btn3 = st.columns([1, 2, 1])
     with col_btn2:
@@ -1285,7 +1184,7 @@ with tab1:
             disabled=(audio_file is None),
             use_container_width=True,
             type="primary",
-            key="transcribe_button_tab1"
+            key="transcribe_button_tab1",
         )
 
     if transcribe_clicked:
@@ -1304,9 +1203,7 @@ with tab1:
                     audio = audio / max_abs * 0.9
 
                     if sr_original != 16000:
-                        audio = librosa.resample(
-                            audio, orig_sr=sr_original, target_sr=16000
-                        )
+                        audio = librosa.resample(audio, orig_sr=sr_original, target_sr=16000)
                         sr = 16000
                     else:
                         sr = sr_original
@@ -1319,26 +1216,35 @@ with tab1:
 
                 col_a, col_b, col_c = st.columns(3)
                 with col_a:
-                    st.markdown(f"""
-                    <div class="metric-card">
-                        <div class="metric-label">Duração Total</div>
-                        <div class="metric-value">{formatar_tempo(duracao_min_pre * 60)}</div>
-                    </div>
-                    """, unsafe_allow_html=True)
+                    st.markdown(
+                        f"""
+                        <div class="metric-card">
+                            <div class="metric-label">Duração Total</div>
+                            <div class="metric-value">{formatar_tempo(duracao_min_pre * 60)}</div>
+                        </div>
+                        """,
+                        unsafe_allow_html=True,
+                    )
                 with col_b:
-                    st.markdown(f"""
-                    <div class="metric-card">
-                        <div class="metric-label">Tamanho</div>
-                        <div class="metric-value">{tamanho_mb:.1f} MB</div>
-                    </div>
-                    """, unsafe_allow_html=True)
+                    st.markdown(
+                        f"""
+                        <div class="metric-card">
+                            <div class="metric-label">Tamanho</div>
+                            <div class="metric-value">{tamanho_mb:.1f} MB</div>
+                        </div>
+                        """,
+                        unsafe_allow_html=True,
+                    )
                 with col_c:
-                    st.markdown(f"""
-                    <div class="metric-card">
-                        <div class="metric-label">Partes</div>
-                        <div class="metric-value">{total_partes_preview}</div>
-                    </div>
-                    """, unsafe_allow_html=True)
+                    st.markdown(
+                        f"""
+                        <div class="metric-card">
+                            <div class="metric-label">Partes</div>
+                            <div class="metric-value">{total_partes_preview}</div>
+                        </div>
+                        """,
+                        unsafe_allow_html=True,
+                    )
 
                 (
                     texto_bruto,
@@ -1347,11 +1253,11 @@ with tab1:
                     duracao_min,
                     total_partes,
                     tempos_partes,
-                ) = transcrever_com_whisper(
-                    audio, sr, modelo_whisper, chunk_segundos
-                )
+                ) = transcrever_com_whisper(audio, sr, modelo_whisper, chunk_segundos)
 
-                texto_pos = pos_processar_texto(texto_bruto)
+                texto_pos, nsubs = pos_processar_texto(texto_bruto)
+                st.caption(f"Correções aplicadas na transcrição: {nsubs}")
+
                 texto_corrigido = corrigir_pontuacao(capitalizar_frases(texto_pos))
                 texto_paragrafado = organizar_paragrafos(texto_corrigido)
 
@@ -1370,84 +1276,41 @@ with tab1:
                         "duracao_min": float(duracao_min),
                         "tempo_proc": float(tempo_proc),
                         "palavras": len(texto_corrigido.split()),
-                        "preview": texto_paragrafado[:1000] + ("..." if len(texto_paragrafado) > 1000 else "")
+                        "preview": texto_paragrafado[:1000] + ("..." if len(texto_paragrafado) > 1000 else ""),
                     }
                     hist.insert(0, item)
                     st.session_state["historico_transcricoes"] = hist[:20]
                     salvar_historico(st.session_state["historico_transcricoes"])
 
-                    st.markdown("""
-                    <div class="success-card" style="padding: 2rem;">
-                        <div style="text-align: center;">
-                            <h2 style="margin: 0; color: #155724;">🎉 Transcrição Concluída!</h2>
-                            <p style="margin: 0; color: #0c5460;">Processamento finalizado com sucesso</p>
+                    st.markdown(
+                        """
+                        <div class="success-card" style="padding: 2rem;">
+                            <div style="text-align: center;">
+                                <h2 style="margin: 0; color: #155724;">🎉 Transcrição Concluída!</h2>
+                                <p style="margin: 0; color: #0c5460;">Processamento finalizado com sucesso</p>
+                            </div>
                         </div>
-                    </div>
-                    """, unsafe_allow_html=True)
-
-                    st.markdown("### 📈 Estatísticas de Processamento")
-
-                    col1, col2, col3, col4 = st.columns(4)
-                    with col1:
-                        st.markdown(f"""
-                        <div class="metric-card">
-                            <div class="metric-label">Duração Áudio</div>
-                            <div class="metric-value">{formatar_tempo(duracao_min * 60)}</div>
-                        </div>
-                        """, unsafe_allow_html=True)
-                    with col2:
-                        st.markdown(f"""
-                        <div class="metric-card">
-                            <div class="metric-label">Tempo Process.</div>
-                            <div class="metric-value">{formatar_tempo(tempo_proc)}</div>
-                        </div>
-                        """, unsafe_allow_html=True)
-                    with col3:
-                        velocidade_x = (duracao_min * 60) / tempo_proc if tempo_proc > 0 else 0
-                        st.markdown(f"""
-                        <div class="metric-card">
-                            <div class="metric-label">Velocidade</div>
-                            <div class="metric-value">{velocidade_x:.1f}x</div>
-                        </div>
-                        """, unsafe_allow_html=True)
-                    with col4:
-                        palavras = len(texto_corrigido.split())
-                        st.markdown(f"""
-                        <div class="metric-card">
-                            <div class="metric-label">Palavras</div>
-                            <div class="metric-value">{palavras}</div>
-                        </div>
-                        """, unsafe_allow_html=True)
-
-                    if tempos_partes:
-                        st.markdown("### 📊 Desempenho por Parte")
-                        df_tempos = pd.DataFrame({
-                            "Parte": list(range(1, total_partes + 1)),
-                            "Tempo (s)": tempos_partes,
-                        })
-                        st.bar_chart(df_tempos.set_index("Parte"))
-
-                    st.markdown("### 🧾 Prévia da Transcrição (com parágrafos)")
-                    preview_texto = texto_paragrafado[:800] + "..." if len(texto_paragrafado) > 800 else texto_paragrafado
-                    st.markdown(f"""
-                    <div class="text-preview">
-                        {preview_texto.replace("\\n\\n", "<br><br>")}
-                        <br><br><small><i>Total: {len(texto_corrigido)} caracteres, {len(texto_corrigido.split())} palavras</i></small>
-                    </div>
-                    """, unsafe_allow_html=True)
+                        """,
+                        unsafe_allow_html=True,
+                    )
 
                     st.markdown("### ⏱️ Timestamps Detalhados")
                     if ts:
                         timestamps_html = formatar_timestamps(ts)
-                        st.markdown(f"""
-                        <div style="max-height: 400px; overflow-y: auto; padding: 1rem;">
-                            {timestamps_html}
-                        </div>
-                        """, unsafe_allow_html=True)
-                        texto_ts = "\n".join([
-                            f"[{formatar_tempo(t['start'])} - {formatar_tempo(t['end'])}] {t['text'][:400]}"
-                            for t in ts
-                        ])
+                        st.markdown(
+                            f"""
+                            <div style="max-height: 400px; overflow-y: auto; padding: 1rem;">
+                                {timestamps_html}
+                            </div>
+                            """,
+                            unsafe_allow_html=True,
+                        )
+                        texto_ts = "\n".join(
+                            [
+                                f"[{formatar_tempo(t['start'])} - {formatar_tempo(t['end'])}] {t['text'][:400]}"
+                                for t in ts
+                            ]
+                        )
                     else:
                         st.info("ℹ️ Nenhum timestamp disponível")
                         texto_ts = ""
@@ -1464,7 +1327,7 @@ with tab1:
                             file_name=f"transcricao_paragrafada_{nome_base}_{timestamp_str}.txt",
                             mime="text/plain",
                             use_container_width=True,
-                            key="download_paragrafada"
+                            key="download_paragrafada",
                         )
                     with dl_col2:
                         if ts:
@@ -1474,7 +1337,7 @@ with tab1:
                                 file_name=f"timestamps_{nome_base}_{timestamp_str}.txt",
                                 mime="text/plain",
                                 use_container_width=True,
-                                key="download_timestamps_tab1"
+                                key="download_timestamps_tab1",
                             )
 
             finally:
@@ -1488,146 +1351,72 @@ with tab1:
 # Aba 2 – Biblioteca de correções
 # =============================
 with tab2:
-    st.markdown("""
-    <div style="text-align: center; margin-bottom: 2rem;">
-        <h2>📚 Biblioteca de Correções</h2>
-        <p style="color: #666;">Gerencie as substituições automáticas aplicadas nas transcrições</p>
-    </div>
-    """, unsafe_allow_html=True)
+    st.markdown(
+        """
+        <div style="text-align: center; margin-bottom: 2rem;">
+            <h2>📚 Biblioteca de Correções</h2>
+            <p style="color: #666;">Gerencie as substituições automáticas aplicadas nas transcrições</p>
+        </div>
+        """,
+        unsafe_allow_html=True,
+    )
 
     st.markdown("### 📋 Correções Ativas")
     dicionario_atual = get_correcoes_dicionario()
 
     if dicionario_atual:
-        df_correcoes = pd.DataFrame([
-            {"Original": k, "Substituir por": v}
-            for k, v in dicionario_atual.items()
-        ])
-
-        st.dataframe(
-            df_correcoes,
-            use_container_width=True,
-            hide_index=True,
-            column_config={
-                "Original": st.column_config.TextColumn(
-                    "Palavra Original",
-                    help="Termo que será substituído"
-                ),
-                "Substituir por": st.column_config.TextColumn(
-                    "Substituição",
-                    help="Termo que substituirá o original"
-                )
-            }
-        )
-
-        st.markdown(f"""
-        <div class="info-card">
-            <div style="display: flex; align-items: center; justify-content: space-between;">
-                <div>
-                    <h4 style="margin: 0;">📊 Resumo</h4>
-                    <p style="margin: 0;">{len(dicionario_atual)} correções ativas</p>
-                </div>
-                <div class="status-success">
-                    ATIVO
-                </div>
-            </div>
-        </div>
-        """, unsafe_allow_html=True)
+        df_correcoes = pd.DataFrame([{"Original": k, "Substituir por": v} for k, v in dicionario_atual.items()])
+        st.dataframe(df_correcoes, use_container_width=True, hide_index=True)
     else:
-        st.markdown("""
-        <div class="warning-card">
-            <div style="text-align: center; padding: 2rem;">
-                <div style="font-size: 3rem;">📝</div>
-                <h4>Nenhuma correção cadastrada</h4>
-                <p>Adicione sua primeira correção abaixo</p>
-            </div>
-        </div>
-        """, unsafe_allow_html=True)
+        st.info("ℹ️ Nenhuma correção cadastrada ainda.")
 
     st.markdown("### ➕ Adicionar Novas Correções")
-
     with st.form("form_add_correcoes"):
-        st.markdown("""
-        <div class="custom-card">
-            <h4>Adicionar Múltiplas Regras de Correção</h4>
-            <p style="color: #666; font-size: 0.9rem;">Preencha quantos campos desejar. Os campos vazios serão ignorados.</p>
-        """, unsafe_allow_html=True)
-
         correcoes_inputs = []
         for i in range(8):
             col_orig, col_sub = st.columns([1, 1])
             with col_orig:
-                original = st.text_input(
-                    f"Original {i+1}",
-                    placeholder="Ex: vc, tb, d+, etc.",
-                    key=f"original_input_{i}"
-                )
+                original = st.text_input(f"Original {i+1}", key=f"original_input_{i}")
             with col_sub:
-                substituir = st.text_input(
-                    f"Substituir por {i+1}",
-                    placeholder="Ex: você, também, muito, etc.",
-                    key=f"substituir_input_{i}"
-                )
+                substituir = st.text_input(f"Substituir por {i+1}", key=f"substituir_input_{i}")
             correcoes_inputs.append((original, substituir))
 
-        submit_col1, submit_col2, submit_col3 = st.columns([2, 1, 1])
-        with submit_col1:
-            submitted = st.form_submit_button(
-                "➕ Adicionar Todas as Correções",
-                use_container_width=True,
-                type="primary"
-            )
-        with submit_col2:
-            add_selected = st.form_submit_button(
-                "📝 Adicionar Selecionadas",
-                use_container_width=True
-            )
-        with submit_col3:
-            clear_all = st.form_submit_button(
-                "🧹 Limpar Tudo",
-                use_container_width=True,
-                type="secondary"
-            )
+        submitted = st.form_submit_button("➕ Adicionar", use_container_width=True, type="primary")
+        clear_all = st.form_submit_button("🧹 Limpar tudo", use_container_width=True)
 
-        st.markdown("</div>", unsafe_allow_html=True)
-
-        if submitted or add_selected:
-            correcoes_adicionadas = []
+        if submitted:
+            adicionadas = 0
             for original, substituir in correcoes_inputs:
                 if original.strip() and substituir.strip():
-                    chave = original.strip()
-                    valor = substituir.strip()
-                    st.session_state["correcoes_custom"][chave] = valor
-                    correcoes_adicionadas.append(f"**'{chave}'** → **'{valor}'**")
-
-            if correcoes_adicionadas:
+                    st.session_state["correcoes_custom"][original.strip()] = substituir.strip()
+                    adicionadas += 1
+            if adicionadas:
                 salvar_correcoes_custom(st.session_state["correcoes_custom"])
-                if submitted:
-                    st.success(f"✅ {len(correcoes_adicionadas)} correções adicionadas:")
-                else:
-                    st.success(f"✅ {len(correcoes_adicionadas)} correções selecionadas adicionadas:")
-                for corr in correcoes_adicionadas:
-                    st.markdown(f"- {corr}")
+                st.success(f"✅ {adicionadas} correções adicionadas.")
                 st.rerun()
             else:
-                st.warning("⚠️ Nenhuma correção válida para adicionar. Preencha pelo menos um par de campos.")
+                st.warning("⚠️ Preencha pelo menos uma regra válida.")
 
         if clear_all:
             st.session_state["correcoes_custom"] = {}
             salvar_correcoes_custom(st.session_state["correcoes_custom"])
-            st.success("✅ Todas as correções personalizadas foram removidas")
+            st.success("✅ Correções personalizadas removidas.")
             st.rerun()
+
 
 # =============================
 # Aba 3 – Pós-processamento
 # =============================
 with tab3:
-    st.markdown("""
-    <div style="text-align: center; margin-bottom: 2rem;">
-        <h2>📝 Pós-processamento do Texto</h2>
-        <p style="color: #666;">À esquerda o texto bruto. À direita o texto corrigido.</p>
-    </div>
-    """, unsafe_allow_html=True)
+    st.markdown(
+        """
+        <div style="text-align: center; margin-bottom: 2rem;">
+            <h2>📝 Pós-processamento do Texto</h2>
+            <p style="color: #666;">À esquerda o texto bruto. À direita o texto corrigido.</p>
+        </div>
+        """,
+        unsafe_allow_html=True,
+    )
 
     if not st.session_state["texto_transcrito"].strip():
         st.info("ℹ️ Ainda não há transcrição disponível. Faça uma transcrição na aba de transcrição.")
@@ -1646,7 +1435,7 @@ with tab3:
                 value=st.session_state["texto_transcrito"],
                 height=400,
                 key="texto_bruto_view",
-                disabled=True
+                disabled=True,
             )
 
         with col_corr:
@@ -1655,28 +1444,22 @@ with tab3:
                 "Texto corrigido",
                 value=st.session_state["texto_pos_processado"],
                 height=400,
-                key="texto_pos_processado_area"
+                key="texto_pos_processado_area",
             )
             st.session_state["texto_pos_processado"] = texto_atual
 
         bcol1, bcol2 = st.columns(2)
         with bcol1:
-            aplicar_corr = st.button(
-                "⚙️ Aplicar biblioteca de correções no texto corrigido",
-                use_container_width=True
-            )
+            aplicar_corr = st.button("⚙️ Aplicar biblioteca de correções", use_container_width=True)
         with bcol2:
-            limpar_btn = st.button(
-                "🧹 Limpar texto corrigido",
-                use_container_width=True
-            )
+            limpar_btn = st.button("🧹 Limpar texto corrigido", use_container_width=True)
 
         if aplicar_corr:
-            texto_corr = pos_processar_texto(st.session_state["texto_pos_processado"])
+            texto_corr, nsubs = pos_processar_texto(st.session_state["texto_pos_processado"])
             texto_corr = corrigir_pontuacao(capitalizar_frases(texto_corr))
             texto_corr = organizar_paragrafos(texto_corr)
             st.session_state["texto_pos_processado"] = texto_corr
-            st.success("✅ Biblioteca de correções aplicada ao texto corrigido.")
+            st.success(f"✅ Aplicado. Substituições feitas: {nsubs}")
             st.rerun()
 
         if limpar_btn:
@@ -1690,19 +1473,23 @@ with tab3:
             file_name=f"texto_corrigido_{datetime.now().strftime('%Y%m%d_%H%M%S')}.txt",
             mime="text/plain",
             use_container_width=True,
-            key="download_pos_processado"
+            key="download_pos_processado",
         )
+
 
 # =============================
 # Aba 4 – Histórico
 # =============================
 with tab4:
-    st.markdown("""
-    <div style="text-align: center; margin-bottom: 2rem;">
-        <h2>📊 Histórico de Transcrições</h2>
-        <p style="color: #666;">Veja as últimas transcrições realizadas e recarregue para editar</p>
-    </div>
-    """, unsafe_allow_html=True)
+    st.markdown(
+        """
+        <div style="text-align: center; margin-bottom: 2rem;">
+            <h2>📊 Histórico de Transcrições</h2>
+            <p style="color: #666;">Veja as últimas transcrições realizadas e recarregue para editar</p>
+        </div>
+        """,
+        unsafe_allow_html=True,
+    )
 
     historico = st.session_state.get("historico_transcricoes", [])
 
@@ -1717,7 +1504,7 @@ with tab4:
         st.dataframe(
             df_hist[["Quando", "arquivo", "modelo", "palavras", "duracao_min", "tempo_proc"]],
             use_container_width=True,
-            hide_index=True
+            hide_index=True,
         )
 
         opcoes = [
@@ -1730,11 +1517,14 @@ with tab4:
         item_sel = historico[idx_escolhido]
 
         st.markdown("### 🔍 Prévia")
-        st.markdown(f"""
-        <div class="text-preview">
-            {item_sel['preview'].replace("\\n\\n", "<br><br>")}
-        </div>
-        """, unsafe_allow_html=True)
+        st.markdown(
+            f"""
+            <div class="text-preview">
+                {item_sel['preview'].replace("\\n\\n", "<br><br>")}
+            </div>
+            """,
+            unsafe_allow_html=True,
+        )
 
         if st.button("📥 Carregar esta transcrição na aba de pós-processamento", use_container_width=True):
             st.session_state["texto_transcrito"] = item_sel["preview"]
@@ -1742,21 +1532,26 @@ with tab4:
             st.session_state["texto_pos_processado"] = item_sel["preview"]
             st.success("✅ Texto carregado. Vá na aba '📝 PÓS-PROCESSAMENTO' para editar.")
 
+
 # Fechar container principal
 st.markdown("</div>", unsafe_allow_html=True)
 
 # =============================
 # Botão para voltar ao início
 # =============================
-st.markdown("""
+st.markdown(
+    """
 <div class="top-btn-container">
     <a href="#top" class="top-btn">↑</a>
 </div>
-""", unsafe_allow_html=True)
+""",
+    unsafe_allow_html=True,
+)
 
 # Rodapé
 st.markdown("---")
-st.markdown("""
+st.markdown(
+    """
 <div style="text-align: center; color: #666; padding: 1.5rem;">
     <p style="font-size: 1.1rem; font-weight: 600;">🎯 Transcrição Inteligente - v4.3</p>
     <p style="color: #999; font-size: 0.9rem;">
@@ -1766,4 +1561,6 @@ st.markdown("""
         © 2024 • Para uso profissional • Desenvolvido com Streamlit
     </p>
 </div>
-""", unsafe_allow_html=True)
+""",
+    unsafe_allow_html=True,
+)
