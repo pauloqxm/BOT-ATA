@@ -140,9 +140,9 @@ def _proxy_selector_ui_gate():
     # Cabeçalho Azul
     st.markdown(f"""
     <div class="hero-header">
-        <span class="badge">NETWORK SETUP v2.0</span>
-        <h1 style="margin: 15px 0 5px 0; font-weight:800; font-size: 2.5rem;">Whisper Intelligence</h1>
-        <p style="opacity: 0.9; font-size: 1.1rem;">Configure o gateway de conexão para iniciar a transcrição.</p>
+        <span class="badge">VERSÃO v2.0</span>
+        <h1 style="margin: 15px 0 5px 0; font-weight:800; font-size: 2.5rem;">DECIFRAVOZ</h1>
+        <p style="opacity: 0.9; font-size: 1.1rem;">Sistema de trascrição de áudio.</p>
         <div style="margin-top: 20px; display: flex; justify-content: center; gap: 20px;">
             <span>📍 <b>Host:</b> {PROXY_HOST}</span>
             <span>🔌 <b>Porta:</b> {PROXY_PORT}</span>
@@ -163,7 +163,7 @@ def _proxy_selector_ui_gate():
     
     with col_test:
         st.write("") # alinhamento
-        if st.button("🧪 Testar Rede", use_container_width=True):
+        if st.button("🛜 Testar Rede", use_container_width=True):
             with st.spinner("Checando..."):
                 if _test_proxy_connection():
                     st.toast("Conexão com o servidor OK!", icon="✅")
