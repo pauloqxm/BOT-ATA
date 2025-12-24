@@ -7,7 +7,7 @@ from urllib.parse import quote
 st.set_page_config(
     page_title="Whisper ATA | Configuração de Rede",
     page_icon="🌐",
-    layout="wide",
+    #layout="wide",
     initial_sidebar_state="collapsed"
 )
 
