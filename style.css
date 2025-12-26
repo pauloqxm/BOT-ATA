@@ -8,10 +8,45 @@ html, body, [class*="st-"] {
     font-family: 'Inter', sans-serif;
 }
 
-/* Esconde elementos nativos do Streamlit para a UI customizada */
-#MainMenu, footer, header {
+/* Esconde o Menu (Deploy Info) e o Footer, mas MANTÉM o Header para o botão da Sidebar funcionar */
+#MainMenu, footer {
     visibility: hidden;
 }
+
+/* ==============================
+   CORREÇÃO: Botão da Sidebar
+   ============================== */
+
+/* Força o botão de menu (hamburger) a ficar visível e estilizado */
+div[data-testid="stSidebarControl"] {
+    visibility: visible !important;
+    position: fixed !important;
+    top: 10px !important;
+    right: 10px !important;
+    z-index: 999999 !important;
+    
+    background-color: white !important;
+    border-radius: 50% !important;
+    width: 45px !important;
+    height: 45px !important;
+    box-shadow: 0 4px 15px rgba(0,0,0,0.3) !important;
+    
+    /* Centraliza o ícone */
+    display: flex !important;
+    align-items: center !important;
+    justify-content: center !important;
+}
+
+/* Garante que o ícone dentro do botão tenha a cor correta */
+div[data-testid="stSidebarControl"] svg {
+    color: #4f46e5 !important; /* Ícone Roxo */
+    width: 24px !important;
+    height: 24px !important;
+}
+
+/* ==============================
+   Fim das Correções
+   ============================== */
 
 /* Estilos do Gate de Proxy */
 .main {
