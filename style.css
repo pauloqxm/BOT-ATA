@@ -1,0 +1,386 @@
+/* ==============================
+   CSS GLOBAL & GATE (PROXY)
+   ============================== */
+
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;600;800&display=swap');
+
+html, body, [class*="st-"] {
+    font-family: 'Inter', sans-serif;
+}
+
+/* Esconde elementos nativos do Streamlit para a UI customizada */
+#MainMenu, footer, header {
+    visibility: hidden;
+}
+
+/* Estilos do Gate de Proxy */
+.main {
+    background-color: #f8fafc;
+}
+
+.proxy-container {
+    max-width: 850px;
+    margin: 40px auto;
+}
+
+.main-card {
+    border-radius: 24px;
+    overflow: hidden;
+    box-shadow: 0 20px 50px rgba(0,0,0,0.1);
+    background: white;
+}
+
+.hero-header {
+    background: linear-gradient(135deg, #4f46e5 0%, #7c3aed 100%);
+    color: white;
+    padding: 40px;
+    text-align: center;
+    margin-bottom: 0;
+}
+
+.config-body {
+    padding: 40px;
+    margin-top: 0;
+}
+
+.badge {
+    background: rgba(255,255,255,0.2);
+    padding: 4px 12px;
+    border-radius: 8px;
+    font-size: 0.85rem;
+    font-weight: 600;
+}
+
+/* Input Styling */
+.stTextInput > div > div > input {
+    border-radius: 10px !important;
+    border: 1px solid #e2e8f0 !important;
+    padding: 12px !important;
+}
+
+/* Botão Primário */
+.stButton > button[kind="primary"] {
+    background: linear-gradient(135deg, #4f46e5 0%, #7c3aed 100%) !important;
+    border: none !important;
+    border-radius: 12px !important;
+    padding: 1rem 2rem !important;
+    transition: all 0.3s ease;
+}
+
+.stButton > button[kind="primary"]:hover {
+    transform: translateY(-2px);
+    box-shadow: 0 8px 20px rgba(79, 70, 229, 0.3);
+}
+
+.info-box {
+    background-color: #f1f5f9;
+    border-left: 4px solid #4f46e5;
+    padding: 15px;
+    border-radius: 8px;
+    margin-bottom: 25px;
+    font-size: 0.9rem;
+    color: #475569;
+}
+
+/* ==============================
+   CSS PRINCIPAL DO APP
+   ============================== */
+
+/* Tema principal */
+.stApp {
+    background: linear-gradient(135deg, #f5f7fa 0%, #c3cfe2 100%);
+}
+
+.main-container {
+    background: white;
+    border-radius: 20px;
+    padding: 2rem;
+    margin: 1rem auto;
+    box-shadow: 0 20px 60px rgba(0,0,0,0.1);
+    max-width: 95%;
+}
+
+/* Botões modernos */
+.stButton > button {
+    background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+    color: white;
+    border: none;
+    padding: 0.75rem 2rem;
+    border-radius: 50px;
+    font-weight: 600;
+    font-size: 1rem;
+    transition: all 0.3s ease;
+    box-shadow: 0 4px 15px rgba(102, 126, 234, 0.3);
+    width: 100%;
+}
+
+.stButton > button:hover:not(:disabled) {
+    transform: translateY(-2px);
+    box-shadow: 0 8px 25px rgba(102, 126, 234, 0.4);
+}
+
+.stButton > button:disabled {
+    background: #cccccc;
+    box-shadow: none;
+}
+
+/* Variações de botão */
+.secondary-btn {
+    background: linear-gradient(135deg, #6c757d 0%, #495057 100%) !important;
+}
+
+.success-btn {
+    background: linear-gradient(135deg, #28a745 0%, #20c997 100%) !important;
+}
+
+.warning-btn {
+    background: linear-gradient(135deg, #ffc107 0%, #fd7e14 100%) !important;
+}
+
+/* Uploader estilizado */
+.uploadedFile {
+    background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+    color: white;
+    padding: 1.5rem;
+    border-radius: 15px;
+    margin: 1rem 0;
+    box-shadow: 0 5px 20px rgba(102, 126, 234, 0.2);
+}
+
+/* Métricas estilizadas */
+.metric-card {
+    background: white;
+    padding: 1.5rem;
+    border-radius: 15px;
+    box-shadow: 0 5px 20px rgba(0,0,0,0.05);
+    border-left: 5px solid #667eea;
+    margin: 0.5rem 0;
+    transition: transform 0.3s ease;
+}
+
+.metric-card:hover {
+    transform: translateY(-5px);
+    box-shadow: 0 10px 30px rgba(0,0,0,0.1);
+}
+
+.metric-value {
+    font-size: 2rem !important;
+    font-weight: 700 !important;
+    color: #333 !important;
+    margin: 0.5rem 0;
+}
+
+.metric-label {
+    color: #666 !important;
+    font-size: 0.9rem !important;
+    text-transform: uppercase;
+    letter-spacing: 1px;
+    font-weight: 600 !important;
+}
+
+/* Progress bar moderna */
+.stProgress > div > div > div > div {
+    background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+    border-radius: 10px;
+}
+
+/* Cards Genéricos */
+.custom-card {
+    background: white;
+    border-radius: 15px;
+    padding: 1.5rem;
+    box-shadow: 0 5px 20px rgba(0,0,0,0.05);
+    margin: 1rem 0;
+    border: 1px solid #f0f0f0;
+}
+
+.success-card {
+    background: linear-gradient(135deg, #d4edda 0%, #c3e6cb 100%);
+    border-left: 5px solid #28a745;
+}
+
+.warning-card {
+    background: linear-gradient(135deg, #fff3cd 0%, #ffeaa7 100%);
+    border-left: 5px solid #ffc107;
+}
+
+.error-card {
+    background: linear-gradient(135deg, #f8d7da 0%, #f5c6cb 100%);
+    border-left: 5px solid #dc3545;
+}
+
+.info-card {
+    background: linear-gradient(135deg, #d1ecf1 0%, #bee5eb 100%);
+    border-left: 5px solid #17a2b8;
+}
+
+/* Tabs estilizadas */
+.stTabs [data-baseweb="tab-list"] {
+    gap: 2rem;
+    background: transparent;
+    border-bottom: 2px solid #f0f0f0;
+}
+
+.stTabs [data-baseweb="tab"] {
+    background: transparent;
+    border-radius: 10px 10px 0 0;
+    padding: 0.75rem 1.5rem;
+    font-weight: 600;
+    color: #666;
+    transition: all 0.3s ease;
+}
+
+.stTabs [aria-selected="true"] {
+    background: linear-gradient(135deg, #667eea 0%, #764ba2 100%) !important;
+    color: white !important;
+    box-shadow: 0 4px 15px rgba(102, 126, 234, 0.3);
+}
+
+/* Timestamps */
+.timestamp-item {
+    background: linear-gradient(135deg, #ffffff 0%, #f8f9fa 100%);
+    padding: 1rem;
+    border-radius: 10px;
+    margin: 0.5rem 0;
+    border-left: 4px solid #667eea;
+    box-shadow: 0 2px 5px rgba(0,0,0,0.05);
+    transition: all 0.3s ease;
+}
+
+.timestamp-item:hover {
+    transform: translateX(5px);
+    box-shadow: 0 5px 15px rgba(0,0,0,0.1);
+}
+
+/* Texto prévia */
+.text-preview {
+    background: #f8f9fa;
+    padding: 1.5rem;
+    border-radius: 10px;
+    border: 1px solid #e9ecef;
+    font-family: 'Courier New', monospace;
+    line-height: 1.6;
+    max-height: 300px;
+    overflow-y: auto;
+}
+
+/* Editor de texto */
+.text-editor {
+    background: white;
+    padding: 1.5rem;
+    border-radius: 10px;
+    border: 2px solid #e9ecef;
+    font-family: 'Arial', sans-serif;
+    line-height: 1.8;
+    min-height: 400px;
+    max-height: 600px;
+    overflow-y: auto;
+    white-space: pre-wrap;
+    word-wrap: break-word;
+}
+
+.text-editor:focus {
+    border-color: #667eea;
+    box-shadow: 0 0 0 3px rgba(102, 126, 234, 0.2);
+}
+
+/* Parágrafos */
+.paragraph {
+    margin-bottom: 1.5rem;
+    padding: 1rem;
+    border-left: 4px solid #28a745;
+    background: linear-gradient(135deg, #f8fff9 0%, #f0fdf4 100%);
+    border-radius: 8px;
+}
+
+/* Status indicators */
+.status-processing {
+    background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+    color: white;
+    padding: 0.5rem 1rem;
+    border-radius: 20px;
+    font-size: 0.9rem;
+    display: inline-block;
+    animation: pulse 2s infinite;
+}
+
+.status-success {
+    background: linear-gradient(135deg, #28a745 0%, #20c997 100%);
+    color: white;
+    padding: 0.5rem 1rem;
+    border-radius: 20px;
+    font-size: 0.9rem;
+    display: inline-block;
+}
+
+.status-warning {
+    background: linear-gradient(135deg, #ffc107 0%, #fd7e14 100%);
+    color: white;
+    padding: 0.5rem 1rem;
+    border-radius: 20px;
+    font-size: 0.9rem;
+    display: inline-block;
+}
+
+@keyframes pulse {
+    0% { opacity: 1; }
+    50% { opacity: 0.7; }
+    100% { opacity: 1; }
+}
+
+/* Header da Página */
+.page-header {
+    text-align: center;
+    padding: 2rem;
+    background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+    border-radius: 20px;
+    margin-bottom: 2rem;
+    color: white;
+    box-shadow: 0 10px 30px rgba(102, 126, 234, 0.3);
+}
+
+.page-header h1 {
+    margin: 0;
+    font-size: 2.5rem;
+    font-weight: 700;
+}
+
+.page-header p {
+    margin: 0.5rem 0 0 0;
+    opacity: 0.9;
+    font-size: 1.1rem;
+}
+
+/* Botão voltar ao início */
+.top-btn-container {
+    position: fixed;
+    bottom: 20px;
+    right: 20px;
+    z-index: 1000;
+}
+
+.top-btn {
+    background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+    color: white;
+    border: none;
+    border-radius: 50%;
+    width: 60px;
+    height: 60px;
+    font-size: 24px;
+    cursor: pointer;
+    box-shadow: 0 4px 15px rgba(102, 126, 234, 0.3);
+    transition: all 0.3s ease;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    text-decoration: none;
+}
+
+.top-btn:hover {
+    transform: translateY(-3px);
+    box-shadow: 0 8px 25px rgba(102, 126, 234, 0.4);
+}
+
+.main-content {
+    margin-bottom: 80px;
+}
