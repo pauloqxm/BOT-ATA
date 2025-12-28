@@ -45,6 +45,28 @@ html, body {
 </style>
 """, unsafe_allow_html=True)
 
+st.markdown("""
+<style>
+/* REMOVE ESPAÇO SUPERIOR PADRÃO DO STREAMLIT */
+.block-container {
+    padding-top: 0rem !important;
+    margin-top: 0rem !important;
+}
+
+/* Remove qualquer header fantasma */
+header {
+    display: none !important;
+}
+
+/* Garante que o body não empurre o conteúdo */
+.main {
+    padding-top: 0rem !important;
+    margin-top: 0rem !important;
+}
+</style>
+""", unsafe_allow_html=True)
+
+
 
 PROXY_HOST = "172.31.136.14"
 PROXY_PORT = "128"
