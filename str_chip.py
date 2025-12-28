@@ -1,5 +1,3 @@
-# str_chip.py
-
 # ============================================================
 # PROXY FRONTEND (TEM QUE SER O PRIMEIRO BLOCO DO ARQUIVO)
 # ============================================================
@@ -71,7 +69,8 @@ def _proxy_selector_ui_gate():
     .hero-header {
         background: linear-gradient(135deg, #4f46e5 0%, #7c3aed 100%);
         color: white;
-        padding: 40px;
+        padding: 7px;
+        margin: -9rem auto;
         text-align: center;
         margin-bottom: 0;
     }
@@ -243,8 +242,8 @@ st.markdown("""
     .main-container {
         background: white;
         border-radius: 20px;
-        padding: 2rem;
-        margin: 1rem auto;
+        padding: 0rem;
+        margin: -8rem auto;
         box-shadow: 0 20px 60px rgba(0,0,0,0.1);
         max-width: 95%;
     }
@@ -355,6 +354,7 @@ st.markdown("""
         gap: 1.5rem;
         background: #ffffff;
         border-radius: 14px;
+        margin: 2rem auto;
         padding: 10px 12px;
         box-shadow: 0 10px 30px rgba(0,0,0,0.08);
         border: 1px solid rgba(0,0,0,0.06);
@@ -466,7 +466,7 @@ st.markdown("""
 st.markdown("""
 <div style="width: 100%; display: flex; justify-content: center; margin-bottom: 2rem;">
     <img src="https://i.ibb.co/6hdSJFc/Gemini-Generated-Image-ueiwonueiwonueiw.png"
-         style="width: 100%; max-width: 1250px; border-radius: 14px; box-shadow: 0 6px 20px rgba(0,0,0,0.15);">
+         style="width: 100%; max-width: 1250px; margin: -4rem auto; border-radius: 14px; box-shadow: 0 6px 20px rgba(0,0,0,0.15);">
 </div>
 """, unsafe_allow_html=True)
 
