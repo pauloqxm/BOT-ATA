@@ -45,6 +45,10 @@ html, body {
 </style>
 """, unsafe_allow_html=True)
 
+#==================================
+#REMOVE ESPAÇO SUPERIOR PADRÃO DO STREAMLIT 
+#==================================
+
 st.markdown("""
 <style>
 /* REMOVE ESPAÇO SUPERIOR PADRÃO DO STREAMLIT */
@@ -55,7 +59,7 @@ st.markdown("""
 
 /* Remove qualquer header fantasma */
 header {
-    display: none !important;
+    display:  !important;
 }
 
 /* Garante que o body não empurre o conteúdo */
@@ -66,11 +70,8 @@ header {
 </style>
 """, unsafe_allow_html=True)
 
-
-
 PROXY_HOST = "172.31.136.14"
 PROXY_PORT = "128"
-
 
 def _clear_proxy_env():
     for k in ["HTTP_PROXY", "HTTPS_PROXY", "http_proxy", "https_proxy"]:
@@ -500,7 +501,7 @@ st.markdown("""
         gap: 1.5rem;
         background: #ffffff;
         border-radius: 14px;
-        margin: 2rem auto;
+        margin: -1rem auto;
         padding: 10px 12px;
         box-shadow: 0 10px 30px rgba(0,0,0,0.08);
         border: 1px solid rgba(0,0,0,0.06);
@@ -610,9 +611,9 @@ st.markdown("""
 # Cabeçalho com imagem personalizada
 # =============================
 st.markdown("""
-<div style="width: 100%; display: flex; justify-content: center; margin-bottom: 2rem;">
+<div style="width: 100%; display: flex; justify-content: center; margin-bottom: 0rem;">
     <img src="https://i.ibb.co/6hdSJFc/Gemini-Generated-Image-ueiwonueiwonueiw.png"
-         style="width: 100%; max-width: 1250px; margin: -4rem auto; border-radius: 14px; box-shadow: 0 6px 20px rgba(0,0,0,0.15);">
+         style="width: 100%; max-width: 1250px; margin: 1rem auto; border-radius: 14px; box-shadow: 0 6px 20px rgba(0,0,0,0.15);">
 </div>
 """, unsafe_allow_html=True)
 
@@ -1140,7 +1141,7 @@ with st.sidebar:
     <div style="padding: 1.5rem; background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
                 color: white; border-radius: 15px; margin-bottom: 2rem;">
         <h3 style="margin: 0;">⚙️ Configurações</h3>
-        <p style="margin: 0; opacity: 0.9;">Ajuste os parâmetros de processamento</p>
+        <p style="margin: 0; opacity: 0.9;">Ajuste do processamento</p>
     </div>
     """, unsafe_allow_html=True)
 
