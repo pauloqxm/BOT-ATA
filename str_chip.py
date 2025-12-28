@@ -1,5 +1,5 @@
 # ============================================================
-# PROXY FRONTEND (TEM QUE SER O PRIMEIRO BLOCO DO ARQUIVO)
+# PAGINA INICIAL (CREDENCIAIS E LOGIN)
 # ============================================================
 import os
 import socket
@@ -128,7 +128,7 @@ def _proxy_selector_ui_gate():
         text-align: center;
         margin-bottom: 0;
     }
-    .config-body { padding: 40px; margin-top: 0; }
+    .config-body { padding: 10px; margin-top: 0; }
 
     .badge {
         background: rgba(255,255,255,0.2);
