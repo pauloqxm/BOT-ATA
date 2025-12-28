@@ -250,8 +250,8 @@ st.markdown("""
     .main-container {
         background: white;
         border-radius: 20px;
-        padding: 2rem;
-        margin: 1rem auto;
+        padding: 0rem;
+        margin: -8rem auto;
         box-shadow: 0 20px 60px rgba(0,0,0,0.1);
         max-width: 95%;
     }
@@ -1357,17 +1357,18 @@ with tab2:
             </div>
             """, unsafe_allow_html=True)
 
-    # Coluna direita Adicionar Novas Correções
+# Coluna direita Adicionar Novas Correções
+   
     with col_right:
-        st.markdown("### ➕ Adicionar Novas Correções")
-
+        st.markdown("### ➕ Novas Correções")
+    
         with st.form("form_add_correcoes"):
             st.markdown("""
             <div class="custom-card">
-                <h4 style="margin-top:0;">Adicionar Múltiplas Regras</h4>
+                <h4 style="margin-top:0;">Múltiplas Palavras</h4>
                 <p style="color: #666; font-size: 0.9rem;">Campos vazios serão ignorados</p>
             """, unsafe_allow_html=True)
-
+    
             correcoes_inputs = []
             for i in range(8):
                 col_orig, col_sub = st.columns([1, 1])
@@ -1384,8 +1385,8 @@ with tab2:
                         key=f"substituir_input_{i}"
                     )
                 correcoes_inputs.append((original, substituir))
-
-            submit_col1, submit_col2, submit_col3 = st.columns([2, 1, 1])
+    
+            submit_col1, submit_col2 = st.columns([2, 1])
             with submit_col1:
                 submitted = st.form_submit_button(
                     "➕ Adicionar Todas",
@@ -1394,17 +1395,12 @@ with tab2:
                 )
             with submit_col2:
                 add_selected = st.form_submit_button(
-                    "📝 Adicionar Selecionadas",
+                    "📝 Incluir",
                     use_container_width=True
                 )
-            with submit_col3:
-                clear_all = st.form_submit_button(
-                    "🧹 Limpar Tudo",
-                    use_container_width=True
-                )
-
+    
             st.markdown("</div>", unsafe_allow_html=True)
-
+    
             if submitted or add_selected:
                 correcoes_adicionadas = []
                 for original, substituir in correcoes_inputs:
@@ -1413,7 +1409,7 @@ with tab2:
                         valor = substituir.strip()
                         st.session_state["correcoes_custom"][chave] = valor
                         correcoes_adicionadas.append((chave, valor))
-
+    
                 if correcoes_adicionadas:
                     salvar_correcoes_custom(st.session_state["correcoes_custom"])
                     st.success(f"{len(correcoes_adicionadas)} correções adicionadas")
@@ -1421,11 +1417,6 @@ with tab2:
                 else:
                     st.warning("Nenhuma correção válida para adicionar. Preencha pelo menos um par.")
 
-            if clear_all:
-                st.session_state["correcoes_custom"] = {}
-                salvar_correcoes_custom(st.session_state["correcoes_custom"])
-                st.success("Todas as correções personalizadas foram removidas")
-                st.rerun()
 
 # =============================
 # Aba 3 Pós-processamento
