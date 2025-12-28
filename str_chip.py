@@ -1444,8 +1444,33 @@ with tab2:
 
 
 # =============================
-# Aba 3 – Pós-processamento (corrige erro session_state) + ao clicar já aparece texto
+# Aba 3 – Pós-processamento (SEM ERRO: usa callback)
 # =============================
+def _pp_aplicar_correcoes():
+    base = st.session_state.get("texto_pos_processado_area", "")
+    texto_corr = pos_processar_texto(base)
+    texto_corr = corrigir_pontuacao(capitalizar_frases(texto_corr))
+    texto_corr = organizar_paragrafos(texto_corr)
+
+    # Atualiza o estado do widget no callback (permitido)
+    st.session_state["texto_pos_processado_area"] = texto_corr
+    st.session_state["texto_pos_processado"] = texto_corr
+    st.session_state["pp_msg_ok"] = "Correções aplicadas."
+
+def _pp_resetar():
+    base = (
+        st.session_state.get("texto_paragrafado", "").strip()
+        or st.session_state.get("texto_transcrito", "").strip()
+    )
+    st.session_state["texto_pos_processado_area"] = base
+    st.session_state["texto_pos_processado"] = base
+    st.session_state["pp_msg_ok"] = "Texto restaurado."
+
+def _pp_limpar():
+    st.session_state["texto_pos_processado_area"] = ""
+    st.session_state["texto_pos_processado"] = ""
+    st.session_state["pp_msg_ok"] = "Texto limpo."
+
 with tab3:
     st.markdown("""
     <div style="text-align: center; margin-bottom: 2rem;">
@@ -1454,20 +1479,15 @@ with tab3:
     </div>
     """, unsafe_allow_html=True)
 
-    if not st.session_state["texto_transcrito"].strip():
+    if not st.session_state.get("texto_transcrito", "").strip():
         st.info("Ainda não há transcrição disponível. Faça uma transcrição na aba de transcrição.")
     else:
-        # garante valor inicial
-        if not st.session_state["texto_pos_processado"].strip():
-            st.session_state["texto_pos_processado"] = (
-                st.session_state["texto_paragrafado"] or st.session_state["texto_transcrito"]
+        # Inicializa a área corrigida só se ainda não existir
+        if "texto_pos_processado_area" not in st.session_state:
+            st.session_state["texto_pos_processado_area"] = (
+                st.session_state.get("texto_paragrafado", "").strip()
+                or st.session_state.get("texto_transcrito", "").strip()
             )
-
-        # se tem aplicação pendente, atualiza ANTES de criar o widget para evitar StreamlitAPIException
-        if st.session_state.get("pp_apply_pending"):
-            st.session_state["texto_pos_processado"] = st.session_state.get("pp_apply_text", "")
-            st.session_state["pp_apply_pending"] = False
-            st.session_state["pp_apply_text"] = ""
 
         col_bruto, col_corr = st.columns(2)
 
@@ -1475,48 +1495,51 @@ with tab3:
             st.markdown("#### 🎧 Texto bruto (saída direta do modelo)")
             st.text_area(
                 "Texto bruto",
-                value=st.session_state["texto_transcrito"],
-                height=400,
+                value=st.session_state.get("texto_transcrito", ""),
+                height=420,
                 key="texto_bruto_view",
                 disabled=True
             )
 
         with col_corr:
             st.markdown("#### ✨ Texto corrigido e revisado")
-            texto_atual = st.text_area(
+            st.text_area(
                 "Texto corrigido",
-                value=st.session_state["texto_pos_processado"],
-                height=400,
+                height=420,
                 key="texto_pos_processado_area"
             )
-            st.session_state["texto_pos_processado"] = texto_atual
 
-        bcol1, bcol2 = st.columns(2)
+        bcol1, bcol2, bcol3 = st.columns([1.2, 1, 1])
+
         with bcol1:
-            aplicar_corr = st.button("⚙️ Aplicar correções", use_container_width=True)
+            st.button(
+                "⚙️ Aplicar correções",
+                use_container_width=True,
+                type="primary",
+                on_click=_pp_aplicar_correcoes
+            )
         with bcol2:
-            limpar_btn = st.button("🧹 Limpar", use_container_width=True)
+            st.button(
+                "↩️ Voltar pro texto da transcrição",
+                use_container_width=True,
+                on_click=_pp_resetar
+            )
+        with bcol3:
+            st.button(
+                "🧹 Limpar",
+                use_container_width=True,
+                on_click=_pp_limpar
+            )
 
-        if aplicar_corr:
-            base = st.session_state.get("texto_pos_processado", "")
-            texto_corr = pos_processar_texto(base)
-            texto_corr = corrigir_pontuacao(capitalizar_frases(texto_corr))
-            texto_corr = organizar_paragrafos(texto_corr)
-
-            # marca pendente e rerun para atualizar o text_area sem erro
-            st.session_state["pp_apply_text"] = texto_corr
-            st.session_state["pp_apply_pending"] = True
-            st.success("Correções aplicadas.")
-            st.rerun()
-
-        if limpar_btn:
-            st.session_state["texto_pos_processado"] = ""
-            st.rerun()
+        if st.session_state.get("pp_msg_ok"):
+            st.success(st.session_state["pp_msg_ok"])
+            # opcional: apaga a msg depois de mostrar uma vez
+            # del st.session_state["pp_msg_ok"]
 
         st.markdown("### 📥 Download do Texto Corrigido")
         st.download_button(
             "📄 Baixar texto corrigido",
-            data=st.session_state["texto_pos_processado"],
+            data=st.session_state.get("texto_pos_processado_area", ""),
             file_name=f"texto_corrigido_{datetime.now().strftime('%Y%m%d_%H%M%S')}.txt",
             mime="text/plain",
             use_container_width=True,
