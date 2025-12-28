@@ -15,6 +15,37 @@ st.set_page_config(
     initial_sidebar_state="collapsed"
 )
 
+st.markdown("""
+<style>
+/* Remove espaço extra no final da página */
+.main {
+    padding-bottom: 0rem !important;
+}
+
+.block-container {
+    padding-bottom: 0rem !important;
+    margin-bottom: 0rem !important;
+}
+
+/* Esconde footer nativo do Streamlit */
+footer {
+    display: none !important;
+}
+
+/* Evita altura mínima forçada */
+html, body {
+    height: auto !important;
+}
+
+/* Ajusta último elemento da página */
+.block-container > div:last-child {
+    margin-bottom: 0 !important;
+    padding-bottom: 0 !important;
+}
+</style>
+""", unsafe_allow_html=True)
+
+
 PROXY_HOST = "172.31.136.14"
 PROXY_PORT = "128"
 
