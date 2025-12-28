@@ -5,6 +5,7 @@ import os
 import socket
 import streamlit as st
 from urllib.parse import quote
+import streamlit.components.v1 as components
 
 # Configuração inicial
 st.set_page_config(
@@ -113,20 +114,95 @@ def _proxy_selector_ui_gate():
 
     st.markdown('<div class="proxy-container">', unsafe_allow_html=True)
     st.markdown('<div class="main-card">', unsafe_allow_html=True)
+    
+#==========================
+# LOGO DECIFRAVOZ + FONTE MODERNA
+#==========================
 
-    st.markdown(f"""
-    <div class="hero-header">
-        <span class="badge">VERSÃO v2.0</span>
-        <h1 style="margin: 15px 0 5px 0; font-weight:800; font-size: 2.5rem;">DECIFRAVOZ</h1>
-        <p style="opacity: 0.9; font-size: 1.1rem;">Sistema de trascrição de áudio.</p>
-        <div style="margin-top: 20px; display: flex; justify-content: center; gap: 20px;">
-            <span>📍 <b>Host:</b> {PROXY_HOST}</span>
-            <span>🔌 <b>Porta:</b> {PROXY_PORT}</span>
+    components.html(f"""
+    <!DOCTYPE html>
+    <html>
+    <head>
+        <link rel="preconnect" href="https://fonts.googleapis.com">
+        <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+        <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+    
+        <style>
+            .decifravoz-header {{
+                font-family: 'Inter', system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+                background: linear-gradient(135deg, #4f46e5 0%, #7c3aed 100%);
+                color: white;
+                padding: 42px 24px;
+                text-align: center;
+            }}
+    
+            .decifravoz-badge {{
+                display: inline-block;
+                background: rgba(255,255,255,0.2);
+                padding: 4px 14px;
+                border-radius: 999px;
+                font-size: 0.8rem;
+                font-weight: 600;
+                letter-spacing: 0.04em;
+                margin-bottom: 12px;
+            }}
+    
+            .decifravoz-title {{
+                display: flex;
+                align-items: center;
+                justify-content: center;
+                gap: 14px;
+                margin: 14px 0 6px 0;
+                font-weight: 800;
+                font-size: 2.6rem;
+                line-height: 1;
+            }}
+    
+            .decifravoz-sub {{
+                opacity: 0.9;
+                font-size: 1.05rem;
+                font-weight: 400;
+            }}
+    
+            .decifravoz-info {{
+                margin-top: 20px;
+                display: flex;
+                justify-content: center;
+                gap: 24px;
+                font-size: 0.95rem;
+                font-weight: 500;
+                flex-wrap: wrap;
+            }}
+        </style>
+    </head>
+    
+    <body style="margin:0;">
+        <div class="decifravoz-header">
+            <div class="decifravoz-badge">VERSÃO v2.0</div>
+    
+            <div class="decifravoz-title">
+                <img src="https://i.ibb.co/Gvfn2RGt/logo-decifravoz.png"
+                     style="height:48px; width:auto;" />
+                <span>DECIFRAVOZ</span>
+            </div>
+    
+            <div class="decifravoz-sub">
+                Sistema de transcrição de áudio.
+            </div>
+    
+            <div class="decifravoz-info">
+                <span>📍 <b>Host:</b> {PROXY_HOST}</span>
+                <span>🔌 <b>Porta:</b> {PROXY_PORT}</span>
+            </div>
         </div>
-    </div>
-    """, unsafe_allow_html=True)
+    </body>
+    </html>
+    """, height=230)
 
+    
     st.markdown('<div class="config-body">', unsafe_allow_html=True)
+
+
 
     col_mode, col_test = st.columns([3, 1])
     with col_mode:
@@ -1610,8 +1686,8 @@ st.markdown("""
 # Rodapé
 st.markdown("---")
 st.markdown("""
-<div style="text-align: center; color: #666; padding: 1.5rem;">
-    <p style="font-size: 1.1rem; font-weight: 700;">Transcrição Inteligente v4.3</p>
+<div style="text-align: center; color: #666; padding: 0.5rem;">
+    <p style="font-size: 1.1rem; font-weight: 700;">Transcrição Inteligente v4.0</p>
     <p style="color: #999; font-size: 0.9rem;">
         Whisper OpenAI • Processamento em tempo real • Correções automáticas • Interface moderna
     </p>
