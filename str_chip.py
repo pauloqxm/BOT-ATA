@@ -232,7 +232,7 @@ def _proxy_selector_ui_gate():
     
     <body style="margin:0;">
         <div class="decifravoz-header">
-            <div class="decifravoz-badge">VERSÃO v2.0</div>
+            <div class="decifravoz-badge">VERSÃO vBETA</div>
     
             <div class="decifravoz-title">
                 <img src="https://i.ibb.co/Gvfn2RGt/logo-decifravoz.png"
@@ -324,12 +324,12 @@ def _proxy_selector_ui_gate():
     st.markdown("---")
     st.markdown("""
     <div style="text-align: center; color: #666; padding: 0.5rem;">
-        <p style="font-size: 1.1rem; font-weight: 700;">Transcrição Inteligente v4.0</p>
+        <p style="font-size: 1.1rem; font-weight: 700;">Transcrição Inteligente • Beta</p>
         <p style="color: #999; font-size: 0.9rem;">
-            Whisper OpenAI • Processamento em tempo real • Correções automáticas • Interface moderna
+            Modelos Whisper OpenAI • Processamento em tempo real • Biblioteca de correções
         </p>
         <p style="color: #aaa; font-size: 0.8rem; margin-top: 1rem;">
-            © 2024 • Para uso profissional • Desenvolvido com Streamlit
+            © 2026 • Para uso interno
         </p>
     </div>
     """, unsafe_allow_html=True)
@@ -1758,12 +1758,12 @@ st.markdown("""
 st.markdown("---")
 st.markdown("""
 <div style="text-align: center; color: #666; padding: 0.5rem;">
-    <p style="font-size: 1.1rem; font-weight: 700;">Transcrição Inteligente v4.0</p>
+    <p style="font-size: 1.1rem; font-weight: 700;">Transcrição Inteligente • Beta</p>
     <p style="color: #999; font-size: 0.9rem;">
-        Whisper OpenAI • Processamento em tempo real • Correções automáticas • Interface moderna
+        Modelos Whisper OpenAI • Processamento em tempo real • Biblioteca de correções 
     </p>
     <p style="color: #aaa; font-size: 0.8rem; margin-top: 1rem;">
-        © 2024 • Para uso profissional • Desenvolvido com Streamlit
+        © 2026 • Para uso interno • 
     </p>
 </div>
 """, unsafe_allow_html=True)
